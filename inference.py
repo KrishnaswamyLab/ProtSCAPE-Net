@@ -67,9 +67,11 @@ if __name__ == "__main__":
     if args.ckpt_path is None:
         raise ValueError("ckpt_path must be provided in config or via --ckpt_path")
 
-
-    ensure_dir(args.out_dir)
-    pdb_dir = os.path.join(args.out_dir, "pdb_frames")
+    # Create output directory based on protein ID
+    protein_id = getattr(args, 'protein', 'unknown')
+    out_dir = os.path.join(args.out_dir, protein_id)
+    ensure_dir(out_dir)
+    pdb_dir = os.path.join(out_dir, "pdb_frames")
     ensure_dir(pdb_dir)
 
     # -----------------------------
@@ -333,10 +335,10 @@ if __name__ == "__main__":
         E = np.concatenate(E_all, axis=0) if len(E_all) else np.zeros((0,), dtype=np.float32)
         TT = np.concatenate(T_all, axis=0) if len(T_all) else np.zeros((0,), dtype=np.float32)
 
-        np.save(os.path.join(args.out_dir, "latents_zrep_10k.npy"), Z.astype(np.float32))
-        np.save(os.path.join(args.out_dir, "energies_10k.npy"), E.astype(np.float32))
-        np.save(os.path.join(args.out_dir, "times_10k.npy"), TT.astype(np.float32))
-        print(f"[latents] Saved: {args.out_dir}/latents_zrep_10k.npy (shape={Z.shape})")
+        np.save(os.path.join(out_dir, "latents_zrep_10k.npy"), Z.astype(np.float32))
+        np.save(os.path.join(out_dir, "energies_10k.npy"), E.astype(np.float32))
+        np.save(os.path.join(out_dir, "times_10k.npy"), TT.astype(np.float32))
+        print(f"[latents] Saved: {out_dir}/latents_zrep_10k.npy (shape={Z.shape})")
 
         if args.plot_latents and Z.shape[0] > 1:
             color = E.copy()
@@ -345,10 +347,10 @@ if __name__ == "__main__":
             pca2 = compute_pca_2d(Z)
             plot_embedding(
                 pca2, color,
-                out_path=os.path.join(args.out_dir, "pca_energy_10k.png"),
+                out_path=os.path.join(out_dir, "pca_energy_10k.png"),
                 title="PCA(z_rep) colored by energy",
             )
-            print(f"[latents] Wrote {args.out_dir}/pca_energy_10k.png")
+            print(f"[latents] Wrote {out_dir}/pca_energy_10k.png")
 
             # Raw latent dims 0-2 in 3D (if available)
             if Z.shape[1] >= 3:
@@ -365,9 +367,9 @@ if __name__ == "__main__":
 
                 plt.colorbar(scatter, ax=ax, label="Energy", shrink=0.8)
                 plt.tight_layout()
-                plt.savefig(os.path.join(args.out_dir, "latent_raw_3d_energy_10k.png"), dpi=200)
+                plt.savefig(os.path.join(out_dir, "latent_raw_3d_energy_10k.png"), dpi=200)
                 plt.close()
-                print(f"[latents] Wrote {args.out_dir}/latent_raw_3d_energy_10k.png")
+                print(f"[latents] Wrote {out_dir}/latent_raw_3d_energy_10k.png")
 
             # PHATE
             ph2 = try_compute_phate_2d(Z, seed=args.seed, knn=args.phate_knn, t=args.phate_t)
@@ -376,10 +378,10 @@ if __name__ == "__main__":
             else:
                 plot_embedding(
                     ph2, color,
-                    out_path=os.path.join(args.out_dir, "phate_energy_10k.png"),
+                    out_path=os.path.join(out_dir, "phate_energy_10k.png"),
                     title="PHATE(z_rep) colored by energy",
                 )
-                print(f"[latents] Wrote {args.out_dir}/phate_energy_10k.png")
+                print(f"[latents] Wrote {out_dir}/phate_energy_10k.png")
 
     # -----------------------------
     # Print summary

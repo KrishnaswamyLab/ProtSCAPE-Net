@@ -42,7 +42,10 @@ from utils.generation_helpers import (
 )
 from utils.openmm_eval import (
     OpenMMForceEvaluator,
+    OpenMMEnergyEvaluator,
     build_grad_fn_openmm,
+    compute_energy_change,
+    compute_interframe_rmsd,
 )
 from utils.generation_decode import (
     decode_paths_to_xyz_nm,
@@ -289,6 +292,7 @@ def main():
 
     # ---------- OM action + relative path probability in DECODED space ----------
     force_eval = OpenMMForceEvaluator(setup_simulation, pdb_path=pdb_path, first_data=full_dataset[0])
+    energy_eval = OpenMMEnergyEvaluator(setup_simulation, pdb_path=pdb_path, first_data=full_dataset[0])
 
     sel_idx = None
     if hasattr(full_dataset[0], "sel_atom_indices"):
@@ -303,6 +307,31 @@ def main():
         dt=float(args.action_dt),
     )
 
+    # ---------- Compute additional metrics for each path ----------
+    print("\n[metrics] Computing inter-frame RMSD, ΔE, Ramachandran, and clash scores...")
+    
+    interframe_rmsds = []  # List of arrays, one per path
+    delta_Es = []  # Energy changes (initial to post-minimization)
+    initial_energies = []  # Initial energies before minimization
+    final_energies = []  # Final energies after minimization
+    
+    for b in range(args.n_paths):
+        # Inter-frame RMSD for path continuity
+        rmsds_b = compute_interframe_rmsd(xyz_paths_nm[:, b])  # (Tsub-1,)
+        interframe_rmsds.append(rmsds_b)
+        
+        # Energy change (ΔE) for the final frame of each path
+        final_frame_nm = xyz_paths_nm[-1, b]  # (N, 3)
+        E_init, E_final, dE = compute_energy_change(
+            energy_eval,
+            final_frame_nm,
+            max_iterations=100,
+        )
+        initial_energies.append(E_init)
+        final_energies.append(E_final)
+        delta_Es.append(dE)
+    
+    # Print summary of OM action and probability
     for b in range(args.n_paths):
         print(f"[path {b:02d}] OM_action={actions[b]:.6e}  rel_prob={rel_prob[b]:.4f}")
     best = int(np.argmax(rel_prob))
@@ -333,7 +362,7 @@ def main():
     )
     print(f"[saved] PHATE multipath: {safe_abs(phate_path)}")
 
-    # ---------- export PDBs per path ----------
+    # ---------- export PDBs per path and compute structural validity metrics ----------
     molprobity_results: List[Dict[str, Any]] = []
     if args.export_pdb:
         base_dir = prefix + "_pdb_paths"
@@ -355,13 +384,58 @@ def main():
             )
             print(f"[saved] path {b:02d} PDBs: {abs_dir}")
 
-            if args.run_molprobity:
-                mp = run_molprobity_on_folder(pdb_dir_b)
-                if mp:
-                    mp["path"] = b
-                    mp["om_action"] = float(actions[b])
-                    mp["om_rel_prob"] = float(rel_prob[b])
-                    molprobity_results.append(mp)
+            # Always run MolProbity for structural validity metrics
+            mp = run_molprobity_on_folder(pdb_dir_b)
+            if mp:
+                mp["path"] = b
+                mp["om_action"] = float(actions[b])
+                mp["om_rel_prob"] = float(rel_prob[b])
+                
+                # Add computed metrics
+                mp["interframe_rmsd_mean"] = float(np.mean(interframe_rmsds[b])) if len(interframe_rmsds[b]) > 0 else float("nan")
+                mp["interframe_rmsd_std"] = float(np.std(interframe_rmsds[b])) if len(interframe_rmsds[b]) > 0 else float("nan")
+                mp["delta_E"] = float(delta_Es[b])
+                mp["initial_energy"] = float(initial_energies[b])
+                mp["final_energy"] = float(final_energies[b])
+                
+                # Compute Ramachandran Allowed = 100 - outliers
+                rama_outliers = mp.get("rama_outliers_mean", np.nan)
+                mp["rama_allowed_mean"] = 100.0 - rama_outliers if not np.isnan(rama_outliers) else np.nan
+                
+                molprobity_results.append(mp)
+            else:
+                # If MolProbity not available, still record the computed metrics
+                molprobity_results.append({
+                    "path": b,
+                    "om_action": float(actions[b]),
+                    "om_rel_prob": float(rel_prob[b]),
+                    "interframe_rmsd_mean": float(np.mean(interframe_rmsds[b])) if len(interframe_rmsds[b]) > 0 else float("nan"),
+                    "interframe_rmsd_std": float(np.std(interframe_rmsds[b])) if len(interframe_rmsds[b]) > 0 else float("nan"),
+                    "delta_E": float(delta_Es[b]),
+                    "initial_energy": float(initial_energies[b]),
+                    "final_energy": float(final_energies[b]),
+                    "clashscore_mean": np.nan,
+                    "rama_favored_mean": np.nan,
+                    "rama_outliers_mean": np.nan,
+                    "rama_allowed_mean": np.nan,
+                })
+    else:
+        # If not exporting PDBs, still record basic metrics
+        for b in range(args.n_paths):
+            molprobity_results.append({
+                "path": b,
+                "om_action": float(actions[b]),
+                "om_rel_prob": float(rel_prob[b]),
+                "interframe_rmsd_mean": float(np.mean(interframe_rmsds[b])) if len(interframe_rmsds[b]) > 0 else float("nan"),
+                "interframe_rmsd_std": float(np.std(interframe_rmsds[b])) if len(interframe_rmsds[b]) > 0 else float("nan"),
+                "delta_E": float(delta_Es[b]),
+                "initial_energy": float(initial_energies[b]),
+                "final_energy": float(final_energies[b]),
+                "clashscore_mean": np.nan,
+                "rama_favored_mean": np.nan,
+                "rama_outliers_mean": np.nan,
+                "rama_allowed_mean": np.nan,
+            })
 
     # ---------- save payload ----------
     out_dir = os.path.dirname(args.out)
@@ -392,8 +466,12 @@ def main():
         "action_use_full_system": bool(args.action_use_full_system),
         "best_path": int(best),
 
-        # MolProbity (optional)
-        "molprobity": molprobity_results,
+        # All metrics (Ramachandran, clash, RMSD, ΔE)
+        "metrics": molprobity_results,
+        "interframe_rmsds": [r.tolist() for r in interframe_rmsds],
+        "delta_Es": delta_Es,
+        "initial_energies": initial_energies,
+        "final_energies": final_energies,
 
         # plots
         "pca_plot_path": safe_abs(pca_path),
@@ -405,19 +483,32 @@ def main():
     print(f"[saved] payload pkl: {safe_abs(args.out)}")
 
     # print quick summary table for copy/paste into notes
-    print("\n=== SUMMARY ===")
-    for b in range(args.n_paths):
-        print(f"path {b:02d}: rel_prob={rel_prob[b]:.4f}  action={actions[b]:.6e}")
-    if molprobity_results:
-        print("\n=== MOLPROBITY (mean over frames) ===")
-        for r in molprobity_results:
-            print(
-                f"path {int(r['path']):02d}: "
-                f"clash={r.get('clashscore_mean', np.nan):.3f}  "
-                f"rama_favored={r.get('rama_favored_mean', np.nan):.2f}%  "
-                f"rama_outliers={r.get('rama_outliers_mean', np.nan):.2f}%  "
-                f"rel_prob={r.get('om_rel_prob', np.nan):.4f}"
-            )
+    print("\n" + "="*80)
+    print("COMPREHENSIVE METRICS SUMMARY")
+    print("="*80)
+    print(f"{'Path':<6} {'Rama.Allowed':<14} {'Rama.Outliers':<15} {'Clash':<10} {'ΔE(kJ/mol)':<13} {'RMSD(Å)':<10}")
+    print("-"*80)
+    
+    for r in molprobity_results:
+        path_id = int(r['path'])
+        rama_allowed = r.get('rama_allowed_mean', np.nan)
+        rama_outliers = r.get('rama_outliers_mean', np.nan)
+        clash = r.get('clashscore_mean', np.nan)
+        dE = r.get('delta_E', np.nan)
+        rmsd = r.get('interframe_rmsd_mean', np.nan)
+        
+        print(
+            f"{path_id:<6} "
+            f"{rama_allowed:>6.2f}%        "
+            f"{rama_outliers:>6.2f}%         "
+            f"{clash:>6.2f}     "
+            f"{dE:>10.2f}    "
+            f"{rmsd:>6.3f}"
+        )
+    
+    print("="*80)
+    print(f"Best path by OM rel_prob: {best:02d} (prob={rel_prob[best]:.4f})")
+    print("="*80)
 
 
 if __name__ == "__main__":

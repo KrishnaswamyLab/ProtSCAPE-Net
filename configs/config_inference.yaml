@@ -2,13 +2,13 @@
 # Default config for atomic-level graph inference/testing
 
 # Dataset/Model
-protein: "1bx7"
-graphs_pkl: "1bx7_A_protein/graphs_atomic_BACKBONE_minfeats_Z_res_aaidx_edgeattr_10k.pkl"
-ckpt_path: "path/to/model.pt"  # Required - override this!
+protein: "7lp1"
+graphs_pkl: "data/graphs/7lp1_A_graphs.pkl"
+ckpt_path: "train_logs/progsnn_logs_run_atlas_2026-01-26-120329/model_FINAL_7lp1.pt"  # Required - override this!
 
 # MDAnalysis export (must match how graphs were built)
-pdb: "1bx7_A_protein/1bx7_A.pdb"
-xtc: "1bx7_A_protein/1bx7_A_prod_R1_fit.xtc"
+pdb: "data/datasets/7lp1_A_protein/7lp1_A.pdb"
+xtc: "data/datasets/7lp1_A_protein/7lp1_A_prod_R1_fit.xtc"
 
 # DataLoader
 batch_size: 1
@@ -39,7 +39,7 @@ normalize_xyz: false
 # Evaluation + export
 export_pdb: true
 n_pdb_frames: 50
-out_dir: "TEST_OUTPUTS_ATOMIC_XYZ"
+out_dir: "Inference"
 
 # Latent visualization
 save_latents: true

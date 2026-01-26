@@ -246,3 +246,91 @@ def build_grad_fn_openmm(
         return torch.stack(grads_out, dim=0)
 
     return grad_fn
+
+def minimize_structure_openmm(
+    simulation: Any,
+    positions_nm: np.ndarray,
+    max_iterations: int = 100,
+) -> np.ndarray:
+    """
+    Minimize a structure using OpenMM's LocalEnergyMinimizer.
+    
+    Args:
+        simulation: OpenMM simulation object
+        positions_nm: Initial positions in nanometers, shape (N, 3)
+        max_iterations: Maximum number of minimization iterations
+        
+    Returns:
+        Minimized positions in nanometers, shape (N, 3)
+    """
+    from openmm import unit, LocalEnergyMinimizer
+    
+    qpos = unit.Quantity(positions_nm, unit=nanometer)
+    simulation.context.setPositions(qpos)
+    
+    # Minimize
+    LocalEnergyMinimizer.minimize(simulation.context, maxIterations=max_iterations)
+    
+    # Get minimized positions
+    state = simulation.context.getState(getPositions=True)
+    min_positions = state.getPositions(asNumpy=True)
+    return np.asarray(min_positions)
+
+
+def compute_energy_change(
+    energy_eval: OpenMMEnergyEvaluator,
+    positions_nm: np.ndarray,
+    max_iterations: int = 100,
+) -> tuple[float, float, float]:
+    """
+    Compute energy change after minimization (ΔE).
+    
+    Args:
+        energy_eval: OpenMMEnergyEvaluator instance
+        positions_nm: Initial positions in nanometers, shape (N, 3)
+        max_iterations: Maximum minimization iterations
+        
+    Returns:
+        Tuple of (initial_energy, final_energy, delta_E) in kJ/mol
+    """
+    # Initial energy
+    E_initial = energy_eval.compute_energy_kjmol(positions_nm)
+    
+    # Minimize
+    pos_min_nm = minimize_structure_openmm(
+        energy_eval.simulation,
+        positions_nm,
+        max_iterations=max_iterations,
+    )
+    
+    # Final energy
+    E_final = energy_eval.compute_energy_kjmol(pos_min_nm)
+    
+    delta_E = E_final - E_initial
+    
+    return E_initial, E_final, delta_E
+
+
+def compute_interframe_rmsd(xyz_path_nm: np.ndarray) -> np.ndarray:
+    """
+    Compute RMSD between successive frames along a path.
+    
+    Args:
+        xyz_path_nm: Path coordinates in nanometers, shape (T, N, 3)
+        
+    Returns:
+        Array of RMSDs between consecutive frames in Angstroms, shape (T-1,)
+    """
+    from utils.geometry import kabsch_rmsd
+    
+    if xyz_path_nm.shape[0] < 2:
+        return np.array([])
+    
+    rmsds = []
+    xyz_path_A = xyz_path_nm * NM_TO_ANG
+    
+    for i in range(xyz_path_A.shape[0] - 1):
+        rmsd = kabsch_rmsd(xyz_path_A[i], xyz_path_A[i + 1])
+        rmsds.append(rmsd)
+    
+    return np.array(rmsds)

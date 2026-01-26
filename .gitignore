@@ -2,3 +2,5 @@ data/datasets/*
 data/graphs/*
 logs/
 train_logs/
+protscape/__pycache__/*
+Inference/*

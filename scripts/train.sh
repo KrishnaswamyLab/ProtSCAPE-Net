@@ -9,20 +9,9 @@
 #SBATCH --output=./logs/slurm/%x_%j.out
 #SBATCH --error=./logs/slurm/%x_%j.err
 
-cd /gpfs/gibbs/pi/krishnaswamy_smita/sv496/PROTSCAPE
+cd /gpfs/gibbs/pi/krishnaswamy_smita/sv496/ProtSCAPE-Net
 module load miniconda
 conda activate mfcn
 
 # Run training on all proteins in parallel
-python train.py --config configs/config.yaml --protein 7lp1 &
-PID1=$!
-
-python train.py --config configs/config.yaml --protein 7jfl &
-PID2=$!
-
-python train.py --config configs/config.yaml --protein 6p5h &
-PID3=$!
-
-# Wait for all background processes to complete
-wait $PID1 $PID2 $PID3
-echo "All training jobs completed!"
+python train.py --config configs/config.yaml --protein 7jfl
