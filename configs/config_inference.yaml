@@ -1,0 +1,52 @@
+# ProtSCAPE Inference Configuration
+# Default config for atomic-level graph inference/testing
+
+# Dataset/Model
+protein: "1bx7"
+graphs_pkl: "1bx7_A_protein/graphs_atomic_BACKBONE_minfeats_Z_res_aaidx_edgeattr_10k.pkl"
+ckpt_path: "path/to/model.pt"  # Required - override this!
+
+# MDAnalysis export (must match how graphs were built)
+pdb: "1bx7_A_protein/1bx7_A.pdb"
+xtc: "1bx7_A_protein/1bx7_A_prod_R1_fit.xtc"
+
+# DataLoader
+batch_size: 1
+num_workers: 2
+
+# Model hparams (must match training)
+latent_dim: 128
+hidden_dim: 256
+embedding_dim: 128
+input_dim: 3
+lr: 1e-3
+alpha: 50.0
+beta_loss: 0.5
+coord_weight: 50.0
+probs: 0.2
+nhead: 1
+layers: 3
+task: "reg"
+
+# Equivariant MP hparams
+num_mp_layers: 2
+mp_hidden: 256
+
+# Normalization toggles
+normalize_energy: true
+normalize_xyz: false
+
+# Evaluation + export
+export_pdb: true
+n_pdb_frames: 50
+out_dir: "TEST_OUTPUTS_ATOMIC_XYZ"
+
+# Latent visualization
+save_latents: true
+plot_latents: true
+phate_knn: 5
+phate_t: 30
+seed: 0
+
+# Device
+device: "cuda"

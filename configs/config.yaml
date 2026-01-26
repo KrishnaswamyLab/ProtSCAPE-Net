@@ -1,0 +1,49 @@
+# ProtSCAPE Training Configuration
+# Default config for atomic-level graph training
+
+# Dataset
+dataset: "atlas"
+protein: "7lp1"
+pkl_path: "data/graphs/7lp1_A_graphs.pkl"
+
+# Model hyperparameters
+latent_dim: 128
+hidden_dim: 256
+embedding_dim: 128
+input_dim: 3
+
+# Learning
+lr: 0.001
+n_epochs: 800
+
+# Loss weights
+alpha: 20.0                # energy loss weight
+beta_loss: 0.5             # node reconstruction weight
+coord_weight: 70.0         # coordinate loss weight
+
+# Transformer/Scatter
+probs: 0.2
+nhead: 1
+layers: 3
+task: "reg"
+
+# SE(3)/E(3) Message Passing
+num_mp_layers: 2
+mp_hidden: 256
+
+# Data loading
+batch_size: 256
+num_workers: 15
+
+# Logging/Saving
+save_dir: "train_logs/"
+wandb_project: "protscape"
+
+# Split parameters
+split_seed: 0
+window_size: 10
+num_windows: 20
+
+# Normalization
+normalize_x: false
+normalize_energy: true

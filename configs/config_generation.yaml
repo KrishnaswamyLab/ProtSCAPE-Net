@@ -1,0 +1,75 @@
+# ProtSCAPE Generation Configuration
+# Configuration for multipath generation in latent space with OM action computation
+
+# Dataset and paths
+protein: "1bx7"
+atlas_rt_path: "1bx7_A_protein/atlas_new.py"
+pdb: "1bx7_A_protein/1bx7_A.pdb"
+
+# Model paths
+latent_path: null  # REQUIRED: Path to latent embeddings
+model_path: null   # REQUIRED: Path to trained model checkpoint
+
+# Generation parameters
+steps: 10
+step_size: 1e-6
+n_paths: 8
+
+# Start point selection
+start_mode: "same_point"  # Options: "pctl", "topk_random", "random", "same_point"
+start_percentile: 75.0
+start_jitter: 0.0
+
+# Momentum sampler parameters
+momentum: 0.0
+step_size_rescale: 1.0
+
+# DAE (Denoiser AutoEncoder) for latent space
+use_dae: false
+dae_model_path: "NEW_LATENT_EMBEDDINGS/dae_latent_denoiser_500.pt"
+dae_train_if_missing: false
+dae_hidden_dims: "512,512"
+dae_epochs: 50
+
+# Decoding parameters
+decode_every: 1
+normalize_xyz: false
+
+# XYZ normalization stats (required if normalize_xyz=true)
+xyz_stats_path: null
+xyz_mu_path: null
+xyz_sd_path: null
+
+# Onsager-Machlup action parameters
+action_dt: 1.0
+action_use_full_system: false
+
+# Plotting parameters
+plot_every: 1
+phate_knn: 15
+phate_t: 30
+
+# PDB export parameters
+export_pdb: true
+n_pdb_frames: 50
+align_kabsch: true
+run_molprobity: true
+
+# Output path
+out: "NEW_LATENT_EMBEDDINGS/generated_latent_trajectory.pkl"
+
+# Model hyperparameters (usually inferred from dataset, can override here)
+latent_dim: 128
+hidden_dim: 256
+embedding_dim: 128
+input_dim: 3
+lr: 1e-3
+alpha: 50.0
+beta_loss: 0.5
+coord_weight: 50.0
+probs: 0.2
+nhead: 1
+layers: 3
+task: "reg"
+num_mp_layers: 2
+mp_hidden: 256

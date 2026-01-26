@@ -1,0 +1,14 @@
+# Core dependencies
+torch>=1.13.0
+torch-geometric>=2.0.0
+pytorch-lightning>=1.9.0
+wandb>=0.13.0
+numpy>=1.21.0
+tqdm>=4.62.0
+MDAnalysis>=2.0.0
+
+# Configuration
+PyYAML>=6.0
+
+# Optional: for advanced visualization
+# phate>=0.2.5

@@ -1,0 +1,52 @@
+# Example: Large Model Configuration
+# For training a larger ProtSCAPE model with increased latent and hidden dimensions
+
+# Dataset
+dataset: "atlas"
+protein: "1bx7"
+pkl_path: "1bx7_A_protein/graphs_atomic_BACKBONE_minfeats_Z_res_aaidx_edgeattr_10k.pkl"
+
+# Model hyperparameters (LARGER than default)
+latent_dim: 256          # doubled from 128
+hidden_dim: 512          # doubled from 256
+embedding_dim: 256       # doubled from 128
+input_dim: 3
+
+# Learning
+lr: 5e-4                 # reduced learning rate for stability
+n_epochs: 1200           # more epochs to train larger model
+
+# Loss weights
+alpha: 20.0
+beta_loss: 0.5
+coord_weight: 70.0
+
+# Transformer/Scatter
+probs: 0.3               # higher dropout for regularization
+nhead: 2                 # more attention heads
+layers: 4                # deeper transformer
+task: "reg"
+
+# SE(3)/E(3) Message Passing
+num_mp_layers: 3         # more MP layers
+mp_hidden: 512           # larger MP hidden dimension
+
+# Data loading
+batch_size: 128          # larger batches for GPU memory
+num_workers: 15
+
+# Logging/Saving
+save_dir: "train_logs/"
+wandb_project: "progsnn"
+
+# Split parameters
+split_seed: 42
+window_size: 10
+num_windows: 20
+
+# Normalization
+normalize_x: true        # normalize coordinates
+normalize_energy: true
+
+# Note: You can override any of these from command line:
+# python train.py --config config_large.yaml --batch_size 64 --lr 1e-4

@@ -1,0 +1,4 @@
+data/datasets/*
+data/graphs/*
+logs/
+train_logs/
