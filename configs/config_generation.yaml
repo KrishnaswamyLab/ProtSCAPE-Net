@@ -2,18 +2,18 @@
 # Configuration for multipath generation in latent space with OM action computation
 
 # Dataset and paths
-protein: "1bx7"
-atlas_rt_path: "1bx7_A_protein/atlas_new.py"
-pdb: "1bx7_A_protein/1bx7_A.pdb"
+protein: "7lp1"
+atlas_rt_path: "data/prepare_atlas.py"
+pdb: "data/datasets/7lp1_A_protein/7lp1_A.pdb"
 
 # Model paths
-latent_path: null  # REQUIRED: Path to latent embeddings
-model_path: null   # REQUIRED: Path to trained model checkpoint
+latent_path: "Inference/7lp1/latents_zrep_10k.npy"  # REQUIRED: Path to latent embeddings
+model_path: "train_logs/progsnn_logs_run_atlas_2026-01-26-120329/model_FINAL_7lp1.pt"   # REQUIRED: Path to trained model checkpoint
 
 # Generation parameters
 steps: 10
 step_size: 1e-6
-n_paths: 8
+n_paths: 1
 
 # Start point selection
 start_mode: "same_point"  # Options: "pctl", "topk_random", "random", "same_point"
@@ -40,10 +40,6 @@ xyz_stats_path: null
 xyz_mu_path: null
 xyz_sd_path: null
 
-# Onsager-Machlup action parameters
-action_dt: 1.0
-action_use_full_system: false
-
 # Plotting parameters
 plot_every: 1
 phate_knn: 15
@@ -56,7 +52,7 @@ align_kabsch: true
 run_molprobity: true
 
 # Output path
-out: "NEW_LATENT_EMBEDDINGS/generated_latent_trajectory.pkl"
+out: "Generation/LEP/7lp1/generated_latent_trajectory.pkl"
 
 # Model hyperparameters (usually inferred from dataset, can override here)
 latent_dim: 128

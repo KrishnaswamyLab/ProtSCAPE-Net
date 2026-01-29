@@ -2,14 +2,13 @@
 # Default config for atomic-level graph inference/testing
 
 # Dataset/Model
-protein: "7lp1"
-graphs_pkl: "data/graphs/7lp1_A_graphs.pkl"
-ckpt_path: "train_logs/progsnn_logs_run_atlas_2026-01-26-120329/model_FINAL_7lp1.pt"  # Required - override this!
+protein: "6h86"
+graphs_pkl: "data/graphs/6h86_A_graphs.pkl"
+ckpt_path: "train_logs/progsnn_logs_run_deshaw_2026-01-27-140711/model_FINAL_6h86.pt"  # Required - override this!
 
 # MDAnalysis export (must match how graphs were built)
-pdb: "data/datasets/7lp1_A_protein/7lp1_A.pdb"
-xtc: "data/datasets/7lp1_A_protein/7lp1_A_prod_R1_fit.xtc"
-
+pdb: "data/datasets/6h86_A_protein/6h86_A.pdb"
+xtc: "data/datasets/6h86_A_protein/6h86_A_prod_R1_fit.xtc"
 # DataLoader
 batch_size: 1
 num_workers: 2

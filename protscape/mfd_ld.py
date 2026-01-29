@@ -107,7 +107,7 @@ def mfd_ula_force_momentum(f_fn, denoiser, x_init, num_steps, step_size, step_si
             step_size_noise = step_size
         # Compute sqrt of step size
         sqrt_step_size = (2 * step_size_noise) ** 0.5
-
+        step_size = float(step_size)
         delta_x = step_size * score + sqrt_step_size * noise
         if step_size_rescale is not None:
             assert step_size_rescale > 0.

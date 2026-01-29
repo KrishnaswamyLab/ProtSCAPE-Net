@@ -287,24 +287,44 @@ def compute_energy_change(
     
     Args:
         energy_eval: OpenMMEnergyEvaluator instance
-        positions_nm: Initial positions in nanometers, shape (N, 3)
+        positions_nm: Initial positions in nanometers, shape (N_sel or N_full, 3)
         max_iterations: Maximum minimization iterations
         
     Returns:
         Tuple of (initial_energy, final_energy, delta_E) in kJ/mol
     """
+    # Ensure positions are in nanometers
+    pos_nm = energy_eval._ensure_nanometers(positions_nm.astype(np.float64))
+    
+    # Handle selection vs full system
+    if energy_eval.expected_n_atoms is not None and pos_nm.shape[0] == energy_eval.expected_n_atoms:
+        # Already full system
+        full_pos_nm = pos_nm
+        is_selection = False
+    elif energy_eval.sel_idx is not None and pos_nm.shape[0] == energy_eval.sel_idx.shape[0]:
+        # Selection only - lift to full system
+        full_pos_nm = energy_eval.full_ref_nm.copy()
+        full_pos_nm[energy_eval.sel_idx] = pos_nm
+        is_selection = True
+    else:
+        raise RuntimeError(
+            f"Energy change: decoded coords have {pos_nm.shape[0]} atoms; "
+            f"selection has {None if energy_eval.sel_idx is None else energy_eval.sel_idx.shape[0]} atoms; "
+            f"OpenMM expects {energy_eval.expected_n_atoms} atoms."
+        )
+    
     # Initial energy
     E_initial = energy_eval.compute_energy_kjmol(positions_nm)
     
-    # Minimize
-    pos_min_nm = minimize_structure_openmm(
+    # Minimize (always pass full system to minimize_structure_openmm)
+    full_pos_min_nm = minimize_structure_openmm(
         energy_eval.simulation,
-        positions_nm,
+        full_pos_nm,
         max_iterations=max_iterations,
     )
     
-    # Final energy
-    E_final = energy_eval.compute_energy_kjmol(pos_min_nm)
+    # Final energy (use full system if that's what we minimized)
+    E_final = energy_eval.compute_energy_kjmol(full_pos_min_nm)
     
     delta_E = E_final - E_initial
     

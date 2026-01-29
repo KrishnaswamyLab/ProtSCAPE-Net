@@ -1,0 +1,87 @@
+# Configuration for NEB (Nudged Elastic Band) path generation
+# Example usage:
+#   python generation.py --config configs/config_generation_neb.yaml
+
+# ============================================================================
+# Method selection
+# ============================================================================
+method: "NEB"  # Options: "LEP" (Low Energy Path) or "NEB" (Nudged Elastic Band)
+
+# ============================================================================
+# NEB-specific parameters
+# ============================================================================
+n_pivots: 100          # Number of pivot points along the NEB path
+neb_steps: 150         # Number of NEB optimization steps
+neb_lr: 0.05          # Learning rate for NEB optimization
+
+# ============================================================================
+# Dataset and model paths
+# ============================================================================
+protein: "7lp1"  # Protein identifier (e.g., "7jfl", "7lp1", "1bx7")
+latent_path: "Inference/7lp1/latents_zrep_10k.npy"
+model_path: "train_logs/progsnn_logs_run_atlas_2026-01-26-120329/model_FINAL_7lp1.pt"
+atlas_rt_path: "data/prepare_atlas.py"
+pdb: "data/datasets/7lp1_A_protein/7lp1_A.pdb"  # Auto-detected if null
+# ============================================================================
+# Path generation settings
+# ============================================================================
+n_paths: 1            # Number of paths to generate in parallel
+start_mode: "pctl"    # Options: "pctl", "topk_random", "same_point", "random"
+start_percentile: 95  # For start_mode="pctl": select starting points near this energy percentile
+start_jitter: 0.0     # Add random jitter to starting points (0.0 = no jitter)
+
+end_idx: null         # Target endpoint index (null = auto-select minimum energy point)
+
+# ============================================================================
+# Decoding and export settings
+# ============================================================================
+decode_every: 1       # Decode every Nth frame (1 = decode all)
+normalize_xyz: false  # Whether XYZ coordinates were normalized during training
+xyz_mu_path: null     # Path to xyz mean (if normalize_xyz=true)
+xyz_sd_path: null     # Path to xyz std (if normalize_xyz=true)
+
+export_pdb: true      # Export PDB files for each path
+n_pdb_frames: 100      # Number of PDB frames to export per path
+
+# ============================================================================
+# Visualization settings
+# ============================================================================
+plot_every: 1         # Plot every Nth point on trajectory (1 = plot all)
+phate_knn: 5          # PHATE k-nearest neighbors
+phate_t: 10           # PHATE diffusion time
+
+# ============================================================================
+# Output settings
+# ============================================================================
+out: "Generation/7lp1/neb_7lp1_singlepath.pkl"  # Output path for results
+
+# ============================================================================
+# Model architecture (must match training config)
+# ============================================================================
+latent_dim: 128
+hidden_dim: 256
+embedding_dim: 128
+input_dim: 3
+lr: 1e-3
+alpha: 50.0
+beta_loss: 0.5
+coord_weight: 50.0
+probs: 0.2
+nhead: 1
+layers: 3
+task: "reg"
+num_mp_layers: 2
+mp_hidden: 256
+
+# ============================================================================
+# Legacy LEP parameters (ignored when method="NEB")
+# ============================================================================
+steps: 1000           # Only used for LEP method
+step_size: 1e-10      # Only used for LEP method
+step_size_rescale: 1.0
+momentum: 0.9
+use_dae: false
+dae_model_path: null
+dae_hidden_dims: "256,128"
+dae_epochs: 100
+dae_train_if_missing: false

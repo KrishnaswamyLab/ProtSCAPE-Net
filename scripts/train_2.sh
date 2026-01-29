@@ -1,11 +1,11 @@
 #!/bin/bash
 
-#SBATCH --job-name=atlas_6h86
+#SBATCH --job-name=atlas_6p5h
 #SBATCH --time=20:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --partition=scavenge_gpu
 #SBATCH --gpus=1
-#SBATCH --mem=256G
+#SBATCH --mem=512G
 #SBATCH --output=./logs/slurm/%x_%j.out
 #SBATCH --error=./logs/slurm/%x_%j.err
 
@@ -14,4 +14,4 @@ module load miniconda
 conda activate mfcn
 
 # Run training on all proteins in parallel
-python train.py --config configs/config.yaml --protein 6h86
+python train.py --config configs/config_ubiquitin.yaml --protein 6p5h

@@ -4,3 +4,9 @@ logs/
 train_logs/
 protscape/__pycache__/*
 Inference/*
+docs/*
+Generation/*
+checkpoints/*
+baselines/*
+*.txt
+*.out

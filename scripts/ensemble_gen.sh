@@ -1,11 +1,10 @@
 #!/bin/bash
 
-#SBATCH --job-name=atlas_6h86
+#SBATCH --job-name=ensemble_gen
 #SBATCH --time=20:00:00
-#SBATCH --cpus-per-task=4
-#SBATCH --partition=scavenge_gpu
-#SBATCH --gpus=1
-#SBATCH --mem=256G
+#SBATCH --cpus-per-task=8
+#SBATCH --partition=devel
+#SBATCH --mem=128G
 #SBATCH --output=./logs/slurm/%x_%j.out
 #SBATCH --error=./logs/slurm/%x_%j.err
 
@@ -14,4 +13,4 @@ module load miniconda
 conda activate mfcn
 
 # Run training on all proteins in parallel
-python train.py --config configs/config.yaml --protein 6h86
+python ensemble_gen.py --n_pdb_samples 1000

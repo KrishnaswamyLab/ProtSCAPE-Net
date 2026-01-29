@@ -3,9 +3,6 @@ Visualization and PDB export functions for generation trajectories.
 """
 
 import os
-import subprocess
-import shutil
-import re
 from typing import Any, Dict, Optional
 import numpy as np
 import torch
@@ -55,7 +52,7 @@ def plot_multi_paths_pca(
         path_2d = p.transform(traj_sub[:, b, :])
         plt.plot(path_2d[:, 0], path_2d[:, 1], linewidth=1.5, alpha=0.9)
         plt.scatter(path_2d[0, 0], path_2d[0, 1], marker="x", s=80, linewidths=2)
-        plt.scatter(path_2d[-1, 0], path_2d[-1, 1], marker="x", s=80, linewidths=2)
+        plt.scatter(path_2d[-1, 0], path_2d[-1, 1], marker="o", s=80, linewidths=2)
 
     plt.title(title)
     plt.tight_layout()
@@ -105,7 +102,7 @@ def plot_multi_paths_phate(
         path_2d = traj_2d[:, b, :]
         plt.plot(path_2d[:, 0], path_2d[:, 1], linewidth=1.5, alpha=0.9)
         plt.scatter(path_2d[0, 0], path_2d[0, 1], marker="x", s=80, linewidths=2)
-        plt.scatter(path_2d[-1, 0], path_2d[-1, 1], marker="x", s=80, linewidths=2)
+        plt.scatter(path_2d[-1, 0], path_2d[-1, 1], marker="o", s=80, linewidths=2)
 
     plt.title(title)
     plt.tight_layout()
@@ -191,12 +188,13 @@ def export_pdb_frames(
     return safe_abs(out_dir)
 
 
-def run_molprobity_on_folder(pdb_dir: str) -> Dict[str, float]:
+def compute_structure_metrics(pdb_dir: str) -> Optional[Dict[str, float]]:
     """
-    Run MolProbity on all PDB files in a directory.
+    Compute structure quality metrics manually without external tools.
     
-    Tries phenix.molprobity if available. If not found, returns empty dict.
-    Parsing is best-effort; you may need to adjust regex for your environment output.
+    Computes:
+    - Clashscore: Number of serious steric clashes per 1000 atoms
+    - Ramachandran statistics: Percentage of residues in favored/outlier regions
     
     Args:
         pdb_dir: Directory containing PDB files
@@ -204,45 +202,252 @@ def run_molprobity_on_folder(pdb_dir: str) -> Dict[str, float]:
     Returns:
         Dictionary with mean values of clashscore, rama_favored, rama_outliers, and n_frames_scored
     """
-    phenix = shutil.which("phenix.molprobity")
-    if phenix is None:
-        print(f"[molprobity] phenix.molprobity not found; skipping for {pdb_dir}")
-        return {}
-
     pdbs = sorted([os.path.join(pdb_dir, f) for f in os.listdir(pdb_dir) if f.endswith(".pdb")])
+    # pdbs = ["Inference/7jfl/pdb_frames/true_frame_00005.pdb"]
     if not pdbs:
         return {}
 
-    clash = []
+    clash_scores = []
     rama_favored = []
     rama_outliers = []
 
-    for pdb in pdbs:
+    for pdb_path in pdbs:
         try:
-            out = subprocess.check_output([phenix, pdb], stderr=subprocess.STDOUT, text=True)
-
-            m1 = re.search(r"Clashscore\s*=\s*([0-9.]+)", out)
-            if m1:
-                clash.append(float(m1.group(1)))
-
-            m2 = re.search(r"Ramachandran favored\s*=\s*([0-9.]+)%", out)
-            if m2:
-                rama_favored.append(float(m2.group(1)))
-
-            m3 = re.search(r"Ramachandran outliers\s*=\s*([0-9.]+)%", out)
-            if m3:
-                rama_outliers.append(float(m3.group(1)))
-
-        except subprocess.CalledProcessError as e:
-            msg = e.output if isinstance(e.output, str) else str(e)
-            print(f"[molprobity warn] failed on {pdb}: {msg[:400]}")
+            u = mda.Universe(pdb_path)
+            
+            # Compute clashscore (atoms too close together)
+            n_clashes = compute_clashes(u)
+            n_atoms = len(u.atoms)
+            clashscore = (n_clashes / n_atoms) * 1000 if n_atoms > 0 else 0.0
+            clash_scores.append(clashscore)
+            
+            # Compute Ramachandran statistics
+            rama_stats = compute_ramachandran_stats(u)
+            if rama_stats is not None:
+                rama_favored.append(rama_stats['favored_pct'])
+                rama_outliers.append(rama_stats['outlier_pct'])
+                
+        except Exception as e:
+            print(f"[metrics warn] failed on {pdb_path}: {str(e)[:200]}")
 
     def agg(x):
         return float(np.mean(x)) if len(x) else float("nan")
 
+    def median(x):
+        return float(np.median(x)) if len(x) else float("nan")
+
     return {
-        "clashscore_mean": agg(clash),
+        "clashscore_mean": agg(clash_scores),
         "rama_favored_mean": agg(rama_favored),
         "rama_outliers_mean": agg(rama_outliers),
+        "clashscore_median": median(clash_scores),
+        "rama_favored_median": median(rama_favored),
+        "rama_outliers_median": median(rama_outliers),
         "n_frames_scored": float(len(pdbs)),
     }
+
+
+def compute_clashes(u: mda.Universe, clash_distance: float = 2.0) -> int:
+    """
+    Count steric clashes (non-bonded atoms too close together).
+    
+    Args:
+        u: MDAnalysis Universe
+        clash_distance: Distance threshold in Angstroms (default: 2.0)
+        
+    Returns:
+        Number of clashes detected
+    """
+    # Get all heavy atoms (non-hydrogen)
+    heavy = u.select_atoms("not name H*")
+    positions = heavy.positions
+    
+    n_clashes = 0
+    # Check pairwise distances
+    for i in range(len(positions)):
+        for j in range(i + 1, len(positions)):
+            dist = np.linalg.norm(positions[i] - positions[j])
+            # Check if atoms are close but not bonded
+            # Simple heuristic: if distance < clash_distance, it's a clash
+            if dist < clash_distance:
+                # Check if bonded (simple connectivity check)
+                atom_i = heavy[i]
+                atom_j = heavy[j]
+                # Skip if same residue (likely bonded)
+                if atom_i.resid != atom_j.resid:
+                    # Skip if adjacent residues and backbone atoms (peptide bond)
+                    if abs(atom_i.resid - atom_j.resid) == 1:
+                        if atom_i.name in ['C', 'N', 'CA', 'O'] and atom_j.name in ['C', 'N', 'CA', 'O']:
+                            continue
+                    n_clashes += 1
+    
+    return n_clashes
+
+
+def compute_ramachandran_stats(u: mda.Universe) -> Optional[Dict[str, float]]:
+    """
+    Compute Ramachandran statistics (phi/psi backbone dihedral angles).
+    
+    Args:
+        u: MDAnalysis Universe
+        
+    Returns:
+        Dictionary with favored_pct and outlier_pct, or None if no protein
+    """
+    try:
+        protein = u.select_atoms("protein")
+        if len(protein) == 0:
+            return None
+        
+        # Get all residues
+        residues = protein.residues
+        
+        phi_psi_pairs = []
+        for res in residues:
+            # Need consecutive residues for phi/psi calculation
+            try:
+                # Phi: C(i-1) - N(i) - CA(i) - C(i)
+                # Psi: N(i) - CA(i) - C(i) - N(i+1)
+                
+                # Get atoms
+                if 'CA' not in [a.name for a in res.atoms]:
+                    continue
+                    
+                ca = res.atoms.select_atoms("name CA")[0]
+                n = res.atoms.select_atoms("name N")
+                c = res.atoms.select_atoms("name C")
+                
+                if len(n) == 0 or len(c) == 0:
+                    continue
+                    
+                n = n[0]
+                c = c[0]
+                
+                # Calculate phi (needs previous residue)
+                phi = None
+                if res.resid > residues[0].resid:
+                    prev_res = residues[res.resid - residues[0].resid - 1]
+                    prev_c = prev_res.atoms.select_atoms("name C")
+                    if len(prev_c) > 0:
+                        phi = compute_dihedral(prev_c[0].position, n.position, 
+                                              ca.position, c.position)
+                
+                # Calculate psi (needs next residue)
+                psi = None
+                if res.resid < residues[-1].resid:
+                    next_res = residues[res.resid - residues[0].resid + 1]
+                    next_n = next_res.atoms.select_atoms("name N")
+                    if len(next_n) > 0:
+                        psi = compute_dihedral(n.position, ca.position,
+                                              c.position, next_n[0].position)
+                
+                if phi is not None and psi is not None:
+                    phi_psi_pairs.append((phi, psi))
+                    
+            except Exception:
+                continue
+        
+        if len(phi_psi_pairs) == 0:
+            return None
+        
+        # Classify using Ramachandran regions
+        n_favored = 0
+        n_outliers = 0
+        
+        for phi, psi in phi_psi_pairs:
+            if is_ramachandran_favored(phi, psi):
+                n_favored += 1
+            elif is_ramachandran_outlier(phi, psi):
+                n_outliers += 1
+        
+        total = len(phi_psi_pairs)
+        return {
+            'favored_pct': (n_favored / total) * 100.0,
+            'outlier_pct': (n_outliers / total) * 100.0,
+        }
+        
+    except Exception as e:
+        print(f"[ramachandran warn] {str(e)[:200]}")
+        return None
+
+
+def compute_dihedral(p1: np.ndarray, p2: np.ndarray, p3: np.ndarray, p4: np.ndarray) -> float:
+    """
+    Compute dihedral angle in degrees for four points.
+    
+    Args:
+        p1, p2, p3, p4: 3D coordinates of four atoms
+        
+    Returns:
+        Dihedral angle in degrees
+    """
+    b1 = p2 - p1
+    b2 = p3 - p2
+    b3 = p4 - p3
+    
+    n1 = np.cross(b1, b2)
+    n2 = np.cross(b2, b3)
+    
+    n1 = n1 / np.linalg.norm(n1)
+    n2 = n2 / np.linalg.norm(n2)
+    
+    m1 = np.cross(n1, b2 / np.linalg.norm(b2))
+    
+    x = np.dot(n1, n2)
+    y = np.dot(m1, n2)
+    
+    return np.degrees(np.arctan2(y, x))
+
+
+def is_ramachandran_favored(phi: float, psi: float) -> bool:
+    """
+    Check if phi/psi angles are in favored Ramachandran regions.
+    
+    Simplified regions based on standard Ramachandran plot:
+    - Alpha helix: phi ~ -60, psi ~ -45
+    - Beta sheet: phi ~ -120, psi ~ +120
+    
+    Args:
+        phi, psi: Backbone dihedral angles in degrees
+        
+    Returns:
+        True if in favored region
+    """
+    # Alpha helix region
+    if -100 <= phi <= -30 and -70 <= psi <= -10:
+        return True
+    # Beta sheet region
+    if -180 <= phi <= -90 and 90 <= psi <= 180:
+        return True
+    # Left-handed alpha helix
+    if 30 <= phi <= 90 and -10 <= psi <= 50:
+        return True
+    return False
+
+
+def is_ramachandran_outlier(phi: float, psi: float) -> bool:
+    """
+    Check if phi/psi angles are in outlier Ramachandran regions.
+    
+    Args:
+        phi, psi: Backbone dihedral angles in degrees
+        
+    Returns:
+        True if in outlier region
+    """
+    # Simplified: outliers are typically in regions not favored or allowed
+    # This is a conservative definition
+    if is_ramachandran_favored(phi, psi):
+        return False
+    
+    # Allowed regions (less favorable but not outliers)
+    # Extended regions around favored areas
+    if -180 <= phi <= -30 and -90 <= psi <= 50:
+        return False
+    if -180 <= phi <= 0 and 90 <= psi <= 180:
+        return False
+    if 0 <= phi <= 90 and -60 <= psi <= 90:
+        return False
+    
+    # Everything else is an outlier
+    return True

@@ -1,10 +1,10 @@
-# ProtSCAPE Training Configuration
-# Default config for atomic-level graph training
+# ProtSCAPE Training Configuration for Ubiquitin
+# Reduced memory footprint for larger proteins
 
 # Dataset
 dataset: "deshaw"
-protein: "BPTI"
-pkl_path: "data/graphs/BPTI_graphs.pkl"
+protein: "Ubiquitin"
+pkl_path: "data/graphs/Ubiquitin_graphs.pkl"
 
 # Model hyperparameters
 latent_dim: 128
@@ -31,8 +31,8 @@ task: "reg"
 num_mp_layers: 2
 mp_hidden: 256
 
-# Data loading
-batch_size: 64
+# Data loading - REDUCED FOR MEMORY
+batch_size: 64             # reduced from 256 to fit in GPU memory
 num_workers: 15
 
 # Logging/Saving

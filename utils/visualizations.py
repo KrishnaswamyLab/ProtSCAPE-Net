@@ -90,7 +90,7 @@ def plot_embedding(embed_2d: np.ndarray, color: np.ndarray, out_path: str, title
     color = np.asarray(color).reshape(-1)
 
     plt.figure()
-    sc = plt.scatter(embed_2d[:, 0], embed_2d[:, 1], c=color)
+    sc = plt.scatter(embed_2d[:, 0], embed_2d[:, 1], c=color, s = 8, alpha = 0.25)
     plt.colorbar(sc, label="Energy")
     plt.title(title)
     plt.xlabel("dim 1")
