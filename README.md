@@ -3,7 +3,6 @@
 **ProtSCAPE-Net** - Learning Protein Conformational Landscapes from Molecular Dynamics for Ensemble and Transition Path Generation
 
 ![ProtSCAPE-Net Architecture](data/schematic(3).png)
-*Architecture schematic placeholder - add your diagram here*
 
 ---
 
@@ -358,13 +357,5 @@ ProtSCAPE combines several key components:
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
-
----
-
-## Contact
-
-For questions or issues, please:
-- Open an issue on GitHub
-- Contact: siddharth.viswanath@yale.edu
 
 ---
