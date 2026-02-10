@@ -2,9 +2,9 @@
 # Default config for atomic-level graph training
 
 # Dataset
-dataset: "deshaw"
-protein: "BPTI"
-pkl_path: "data/graphs/BPTI_graphs.pkl"
+dataset: "atlas"
+protein: "6h86"
+pkl_path: "data/graphs/6h86_A_graphs.pkl"
 
 # Model hyperparameters
 latent_dim: 128
@@ -47,3 +47,33 @@ num_windows: 20
 # Normalization
 normalize_x: false
 normalize_energy: true
+
+# ====================================
+# ABLATION STUDY CONFIGURATIONS
+# ====================================
+
+# 1. Scattering/Wavelet vs GCN Ablation
+# Options: "scattering" (default), "gcn", "simple_gcn"
+feature_extractor: "scattering"
+gcn_num_layers: 4              # Number of GCN layers if using GCN
+gcn_hidden_channels: null      # GCN hidden dim (null = same as in_channels)
+
+# 2. Node Feature Ablation
+# Control which node features to use/mask
+ablate_node_features:
+  use_atomic_number: true      # Z (atomic number)
+  use_residue_index: true      # Residue sequential index
+  use_amino_acid: true         # Amino acid type
+  use_xyz: true                # 3D coordinates
+  
+  # Alternative: use random features instead of real ones
+  randomize_atomic_number: false
+  randomize_residue_index: false
+  randomize_amino_acid: false
+  randomize_xyz: false
+
+# 3. Edge Feature Ablation
+ablate_edge_features:
+  use_edge_features: true      # Use edge attributes in EGNN
+  randomize_edge_features: false  # Use random edge features
+  zero_edge_features: false    # Set edge features to zero

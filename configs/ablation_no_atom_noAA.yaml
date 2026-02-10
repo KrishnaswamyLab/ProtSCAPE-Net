@@ -1,0 +1,73 @@
+# Ablation Study: Combined Ablations
+# Example showing multiple ablations at once: GCN + No edges + Limited node features
+
+# Dataset
+dataset: "atlas"
+protein: "7lp1"
+pkl_path: "data/graphs/7lp1_A_graphs.pkl"
+
+# Model hyperparameters
+latent_dim: 128
+hidden_dim: 256
+embedding_dim: 128
+input_dim: 3
+
+# Learning
+lr: 0.001
+n_epochs: 100
+
+# Loss weights
+alpha: 20.0
+beta_loss: 0.5
+coord_weight: 70.0
+
+# Transformer/Scatter
+probs: 0.2
+nhead: 1
+layers: 3
+task: "reg"
+
+# SE(3)/E(3) Message Passing
+num_mp_layers: 2
+mp_hidden: 256
+
+# Data loading
+batch_size: 64
+num_workers: 15
+
+# Logging/Saving
+save_dir: "train_logs/"
+wandb_project: "protscape-ablations-7lp1-no-atom-noAA"
+
+# Split parameters
+split_seed: 0
+window_size: 10
+num_windows: 20
+
+# Normalization
+normalize_x: false
+normalize_energy: true
+
+# ====================================
+# ABLATION: Multiple simultaneous ablations
+# ====================================
+
+# 1. feature extractor: use scattering transform
+feature_extractor: "scattering"
+
+# 2. Use only residue index and xyz (ablate atomic number and amino acid)
+ablate_node_features:
+  use_atomic_number: false   # <--- ABLATED
+  use_residue_index: true
+  use_amino_acid: false      # <--- ABLATED
+  use_xyz: true
+  randomize_atomic_number: false
+  randomize_residue_index: false
+  randomize_amino_acid: false
+  randomize_xyz: false
+
+# 3. Remove edge features
+ablate_edge_features:
+  use_edge_features: true   # <--- ABLATED
+  randomize_edge_features: false
+  zero_edge_features: false

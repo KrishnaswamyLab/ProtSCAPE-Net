@@ -149,12 +149,13 @@ def run_phenix_molprobity(pdb_path: str):
         return None
 
 
-def compute_structure_metrics_all_frames(pdb_dir: str):
+def compute_structure_metrics_all_frames(pdb_dir: str, energies: np.ndarray = None):
     """
     Compute comprehensive MolProbity scores for all PDB frames.
     
     Args:
         pdb_dir: Directory containing PDB files
+        energies: Optional array of energies for each frame, shape (T,)
         
     Returns:
         List of dictionaries with metrics for each frame
@@ -176,6 +177,11 @@ def compute_structure_metrics_all_frames(pdb_dir: str):
     for i, pdb_file in enumerate(pdbs):
         pdb_path = os.path.join(pdb_dir, pdb_file)
         
+        # Get energy for this frame if available
+        energy_value = np.nan
+        if energies is not None and i < len(energies):
+            energy_value = float(energies[i])
+        
         try:
             # Use phenix.molprobity
             result = run_phenix_molprobity(pdb_path)
@@ -188,6 +194,7 @@ def compute_structure_metrics_all_frames(pdb_dir: str):
                     'clashscore': result.get('clashscore', np.nan),
                     'rotamer_outliers_pct': result.get('rotamer_outliers', np.nan),
                     'molprobity_score': result.get('molprobity_score', np.nan),
+                    'energy': energy_value,
                 }
             else:
                 # Phenix failed for this file
@@ -199,6 +206,7 @@ def compute_structure_metrics_all_frames(pdb_dir: str):
                     'clashscore': np.nan,
                     'rotamer_outliers_pct': np.nan,
                     'molprobity_score': np.nan,
+                    'energy': energy_value,
                 }
             
             all_metrics.append(metrics)
@@ -215,6 +223,7 @@ def compute_structure_metrics_all_frames(pdb_dir: str):
                 'clashscore': np.nan,
                 'rotamer_outliers_pct': np.nan,
                 'molprobity_score': np.nan,
+                'energy': energy_value,
             })
     
     return all_metrics
@@ -243,6 +252,73 @@ def compute_interframe_rmsd(xyz_path_A: np.ndarray) -> np.ndarray:
         rmsds.append(rmsd)
     
     return np.array(rmsds)
+
+
+def compute_path_energy_integral(path_latents: np.ndarray, grad_fn: Callable, 
+                                  device: torch.device) -> Dict[str, float]:
+    """
+    Compute energy at each point along a path and integrate.
+    
+    Args:
+        path_latents: Path in latent space, shape (T, D)
+        grad_fn: Function to compute energy and gradients
+        device: Torch device
+        
+    Returns:
+        Dictionary with energy statistics:
+        - energies: Array of energies at each point
+        - energy_sum: Sum of energies along path
+        - energy_mean: Mean energy along path
+        - energy_integral_trapz: Trapezoidal integration of energy
+        - energy_max: Maximum energy along path
+        - energy_min: Minimum energy along path
+    """
+    T = path_latents.shape[0]
+    energies = []
+    
+    print(f"[energy] Computing energies at {T} points along path...")
+    
+    # Compute energy at each latent point
+    with torch.no_grad():
+        for i in range(T):
+            latent = torch.tensor(path_latents[i:i+1], dtype=torch.float32, device=device)
+            
+            # Call grad_fn to get energy
+            energy, _ = grad_fn(latent)
+            
+            # Extract scalar energy value
+            if isinstance(energy, torch.Tensor):
+                energy_val = energy.detach().cpu().item()
+            else:
+                energy_val = float(energy)
+            
+            energies.append(energy_val)
+            
+            if (i + 1) % 10 == 0:
+                print(f"[progress] Computed energy for {i+1}/{T} points")
+    
+    energies = np.array(energies)
+    
+    # Compute various statistics
+    energy_metrics = {
+        'energies': energies,
+        'energy_sum': float(np.sum(energies)),
+        'energy_mean': float(np.mean(energies)),
+        'energy_integral_trapz': float(np.trapz(energies)),  # Trapezoidal integration
+        'energy_max': float(np.max(energies)),
+        'energy_min': float(np.min(energies)),
+        'energy_std': float(np.std(energies)),
+        'energy_barrier': float(np.max(energies) - min(energies[0], energies[-1])),  # Barrier height
+    }
+    
+    print(f"[energy] Path energy statistics:")
+    print(f"  Mean: {energy_metrics['energy_mean']:.3f} kcal/mol")
+    print(f"  Sum: {energy_metrics['energy_sum']:.3f} kcal/mol")
+    print(f"  Integral (trapz): {energy_metrics['energy_integral_trapz']:.3f}")
+    print(f"  Barrier: {energy_metrics['energy_barrier']:.3f} kcal/mol")
+    print(f"  Range: [{energy_metrics['energy_min']:.3f}, {energy_metrics['energy_max']:.3f}] kcal/mol")
+    
+    return energy_metrics
 
 
 def compute_pairwise_rmsd(xyz1: np.ndarray, xyz2: np.ndarray) -> float:
@@ -760,6 +836,7 @@ def main():
     os.makedirs(base_pdb_dir, exist_ok=True)
     
     all_metrics = []
+    path_energy_metrics = []  # Store energy metrics per path
     
     for b in range(B):
         print(f"\n[path {b+1}/{B}] Exporting PDBs and computing metrics...")
@@ -789,10 +866,70 @@ def main():
         print(f"[saved] Path {b} PDBs: {pdb_dir_b}")
         
         # ====================================================================
+        # Compute Energies from PDB Files
+        # ====================================================================
+        print(f"\n[path {b}] Computing energy integral along path from PDBs...")
+        
+        # Get list of PDB files in order
+        pdb_files = sorted([f for f in os.listdir(str(pdb_dir_b)) if f.endswith('.pdb')])
+        
+        # Compute energy for each PDB
+        computed_energies = []
+        for i, pdb_file in enumerate(pdb_files):
+            pdb_file_path = pdb_dir_b / pdb_file
+            
+            # Compute energy using OpenMM
+            try:
+                import openmm.app as app
+                import openmm
+                import openmm.unit as unit
+                
+                pdb = app.PDBFile(str(pdb_file_path))
+                forcefield = app.ForceField('amber14-all.xml', 'implicit/gbn2.xml')
+                system = forcefield.createSystem(pdb.topology, nonbondedMethod=app.NoCutoff, constraints=None)
+                integrator = openmm.LangevinIntegrator(300*unit.kelvin, 1.0/unit.picosecond, 2.0*unit.femtosecond)
+                context = openmm.Context(system, integrator)
+                context.setPositions(pdb.positions)
+                state = context.getState(getEnergy=True)
+                energy = state.getPotentialEnergy().value_in_unit(unit.kilocalories_per_mole)
+                computed_energies.append(float(energy))
+                del context
+                del integrator
+                
+                if (i + 1) % 10 == 0:
+                    print(f"[progress] Computed energy for {i+1}/{len(pdb_files)} points")
+            except Exception as e:
+                print(f"[warn] Energy computation failed for {pdb_file}: {str(e)[:100]}")
+                computed_energies.append(np.nan)
+        
+        # Compute energy statistics
+        energies_array = np.array(computed_energies)
+        energy_stats = {
+            'path': b,
+            'energies': energies_array,
+            'energy_sum': float(np.nansum(energies_array)),
+            'energy_mean': float(np.nanmean(energies_array)),
+            'energy_integral_trapz': float(np.trapz(energies_array[~np.isnan(energies_array)])),
+            'energy_max': float(np.nanmax(energies_array)),
+            'energy_min': float(np.nanmin(energies_array)),
+            'energy_std': float(np.nanstd(energies_array)),
+            'energy_barrier': float(np.nanmax(energies_array) - min(energies_array[0], energies_array[-1])) if not np.all(np.isnan(energies_array)) else np.nan,
+        }
+        
+        print(f"[energy] Path energy statistics:")
+        print(f"  Mean: {energy_stats['energy_mean']:.3f} kcal/mol")
+        print(f"  Sum: {energy_stats['energy_sum']:.3f} kcal/mol")
+        print(f"  Integral (trapz): {energy_stats['energy_integral_trapz']:.3f}")
+        print(f"  Barrier: {energy_stats['energy_barrier']:.3f} kcal/mol")
+        print(f"  Range: [{energy_stats['energy_min']:.3f}, {energy_stats['energy_max']:.3f}] kcal/mol")
+        
+        path_energy_metrics.append(energy_stats)
+        
+        # ====================================================================
         # Compute MolProbity Metrics (following ensemble_gen.py)
         # ====================================================================
         print(f"[molprobity] Computing structure quality metrics for path {b}...")
-        metrics = compute_structure_metrics_all_frames(str(pdb_dir_b))
+        metrics = compute_structure_metrics_all_frames(str(pdb_dir_b), energies=energies_array)
         
         if metrics:
             # Add path identifier
@@ -807,6 +944,17 @@ def main():
                 metrics[0]['interframe_rmsd_mean'] = float(np.mean(interframe_rmsds)) if len(interframe_rmsds) > 0 else np.nan
                 metrics[0]['interframe_rmsd_std'] = float(np.std(interframe_rmsds)) if len(interframe_rmsds) > 0 else np.nan
                 metrics[0]['interframe_rmsd_max'] = float(np.max(interframe_rmsds)) if len(interframe_rmsds) > 0 else np.nan
+                
+                # Add energy metrics to first metric entry
+                if b < len(path_energy_metrics):
+                    energy_stats = path_energy_metrics[b]
+                    metrics[0]['energy_sum'] = energy_stats['energy_sum']
+                    metrics[0]['energy_mean'] = energy_stats['energy_mean']
+                    metrics[0]['energy_integral_trapz'] = energy_stats['energy_integral_trapz']
+                    metrics[0]['energy_barrier'] = energy_stats['energy_barrier']
+                    metrics[0]['energy_max'] = energy_stats['energy_max']
+                    metrics[0]['energy_min'] = energy_stats['energy_min']
+                    metrics[0]['energy_std'] = energy_stats['energy_std']
             
             all_metrics.extend(metrics)
         else:
@@ -874,12 +1022,41 @@ def main():
             
             # Add inter-frame RMSD if available
             if 'interframe_rmsd_mean' in path_df.columns:
-                rmsd_mean = path_df['interframe_rmsd_mean'].iloc[0]
-                rmsd_std = path_df['interframe_rmsd_std'].iloc[0]
-                rmsd_max = path_df['interframe_rmsd_max'].iloc[0]
-                print(f"{'Inter-frame RMSD (Å) - Mean':<40} {rmsd_mean:>6.3f}")
-                print(f"{'Inter-frame RMSD (Å) - Std Dev':<40} {rmsd_std:>6.3f}")
-                print(f"{'Inter-frame RMSD (Å) - Max':<40} {rmsd_max:>6.3f}")
+                rmsd_mean = path_df['interframe_rmsd_mean'].iloc[0] if len(path_df) > 0 else np.nan
+                rmsd_std = path_df['interframe_rmsd_std'].iloc[0] if len(path_df) > 0 else np.nan
+                rmsd_max = path_df['interframe_rmsd_max'].iloc[0] if len(path_df) > 0 else np.nan
+                if not np.isnan(rmsd_mean):
+                    print(f"{'Inter-frame RMSD (Å) - Mean':<40} {rmsd_mean:>6.3f}")
+                    print(f"{'Inter-frame RMSD (Å) - Std Dev':<40} {rmsd_std:>6.3f}")
+                    print(f"{'Inter-frame RMSD (Å) - Max':<40} {rmsd_max:>6.3f}")
+            
+            # Add energy metrics if available
+            print(f"\n{'Energy Metrics:':<40}")
+            if 'energy_sum' in path_df.columns:
+                energy_sum = path_df['energy_sum'].iloc[0] if len(path_df) > 0 else np.nan
+                if not np.isnan(energy_sum):
+                    print(f"{'  Energy Sum (kcal/mol)':<40} {energy_sum:>10.3f}")
+            
+            if 'energy_mean' in path_df.columns:
+                energy_mean = path_df['energy_mean'].iloc[0] if len(path_df) > 0 else np.nan
+                if not np.isnan(energy_mean):
+                    print(f"{'  Energy Mean (kcal/mol)':<40} {energy_mean:>10.3f}")
+            
+            if 'energy_integral_trapz' in path_df.columns:
+                energy_integral = path_df['energy_integral_trapz'].iloc[0] if len(path_df) > 0 else np.nan
+                if not np.isnan(energy_integral):
+                    print(f"{'  Energy Integral (trapz)':<40} {energy_integral:>10.3f}")
+            
+            if 'energy_barrier' in path_df.columns:
+                energy_barrier = path_df['energy_barrier'].iloc[0] if len(path_df) > 0 else np.nan
+                if not np.isnan(energy_barrier):
+                    print(f"{'  Energy Barrier (kcal/mol)':<40} {energy_barrier:>10.3f}")
+            
+            if 'energy_min' in path_df.columns and 'energy_max' in path_df.columns:
+                energy_min = path_df['energy_min'].iloc[0] if len(path_df) > 0 else np.nan
+                energy_max = path_df['energy_max'].iloc[0] if len(path_df) > 0 else np.nan
+                if not np.isnan(energy_min) and not np.isnan(energy_max):
+                    print(f"{'  Energy Range (kcal/mol)':<40} [{energy_min:>6.3f}, {energy_max:>6.3f}]")
         
         print("="*80)
     else:
@@ -904,6 +1081,7 @@ def main():
         "energy_mu": float(energy_mu),
         "energy_sd": float(energy_sd),
         "metrics": all_metrics,
+        "energy_metrics": path_energy_metrics,
         "pdb_dir": str(base_pdb_dir),
         "metrics_csv": str(metrics_csv) if all_metrics else None,
     }

@@ -22,6 +22,7 @@ from protscape.bottleneck import BaseBottleneck
 from protscape.transformer import PositionalEncoding, TransformerEncoder
 from protscape.base import TGTransformerBaseModel_ATLAS
 from protscape.wavelets import Scatter_layer
+from protscape.gcn_layers import GCN_Layer, SimpleGCN_Layer
 
 
 # -------------------------
@@ -141,11 +142,57 @@ class ProtSCAPE(TGTransformerBaseModel_ATLAS):
         self.aa_idx = 2
         self.xyz_start = 3
         self.xyz_end = 6
+        
+        # -------------------------
+        # ABLATION CONFIGURATIONS
+        # -------------------------
+        # Feature extractor type: "scattering", "gcn", "simple_gcn"
+        self.feature_extractor = getattr(hparams, "feature_extractor", "scattering")
+        self.gcn_num_layers = getattr(hparams, "gcn_num_layers", 4)
+        self.gcn_hidden_channels = getattr(hparams, "gcn_hidden_channels", None)
+        
+        # Node feature ablations
+        node_ablate = getattr(hparams, "ablate_node_features", {})
+        self.use_atomic_number = node_ablate.get("use_atomic_number", True)
+        self.use_residue_index = node_ablate.get("use_residue_index", True)
+        self.use_amino_acid = node_ablate.get("use_amino_acid", True)
+        self.use_xyz = node_ablate.get("use_xyz", True)
+        self.randomize_atomic_number = node_ablate.get("randomize_atomic_number", False)
+        self.randomize_residue_index = node_ablate.get("randomize_residue_index", False)
+        self.randomize_amino_acid = node_ablate.get("randomize_amino_acid", False)
+        self.randomize_xyz = node_ablate.get("randomize_xyz", False)
+        
+        # Edge feature ablations
+        edge_ablate = getattr(hparams, "ablate_edge_features", {})
+        self.use_edge_features = edge_ablate.get("use_edge_features", True)
+        self.randomize_edge_features = edge_ablate.get("randomize_edge_features", False)
+        self.zero_edge_features = edge_ablate.get("zero_edge_features", False)
+        
+        # Pre-compute feature indices for efficient slicing (optimization)
+        self._feature_indices = []
+        if self.use_atomic_number:
+            self._feature_indices.append(0)
+        if self.use_residue_index:
+            self._feature_indices.append(1)
+        if self.use_amino_acid:
+            self._feature_indices.append(2)
+        # Convert to tensor for efficient indexing
+        self._feature_idx_tensor = torch.tensor(self._feature_indices, dtype=torch.long)
 
         # -------------------------
         # Node feat embed -> EGNN feat dim
         # -------------------------
-        feat_in_dim = 3  # [Z,res,aa] as scalars
+        # Calculate actual feature dimension based on ablations
+        self.active_node_features = sum([
+            self.use_atomic_number,
+            self.use_residue_index,
+            self.use_amino_acid
+        ])
+        
+        if self.active_node_features == 0:
+            raise ValueError("At least one node feature (Z, res, or aa) must be enabled")
+        
+        feat_in_dim = self.active_node_features
         act = nn.GELU()
         self.feat_embed = nn.Sequential(
             nn.Linear(feat_in_dim, 128),
@@ -153,27 +200,48 @@ class ProtSCAPE(TGTransformerBaseModel_ATLAS):
             nn.Linear(128, self.input_dim),
         )
 
-        # EGNN stack
+        # EGNN stack - adjust edge_dim based on edge ablation
         self.num_egnn_layers = getattr(hparams, "num_egnn_layers", getattr(hparams, "num_mp_layers", 3))
+        effective_edge_dim = 0 if (not self.use_edge_features or self.zero_edge_features) else self.edge_attr_dim
         self.egnn_layers = nn.ModuleList([
-            EGNN(dim=self.input_dim, edge_dim=self.edge_attr_dim) for _ in range(self.num_egnn_layers)
+            EGNN(dim=self.input_dim, edge_dim=effective_edge_dim) for _ in range(self.num_egnn_layers)
         ])
 
-        # scattering input: concat([feats, coors]) => input_dim + 3
-        self.scatter_in_dim = self.input_dim + 3
-        self.scattering_network = Scatter_layer(self.scatter_in_dim, self.max_seq_len, trainable_f=False)
+        # Feature extraction layer: scattering or GCN variants
+        # Adjust input dimension based on xyz ablation
+        xyz_dim = 3 if self.use_xyz else 0
+        self.scatter_in_dim = self.input_dim + xyz_dim
+        
+        if self.feature_extractor == "scattering":
+            self.feature_extraction_network = Scatter_layer(self.scatter_in_dim, self.max_seq_len, trainable_f=False)
+        elif self.feature_extractor == "gcn":
+            self.feature_extraction_network = GCN_Layer(
+                self.scatter_in_dim, 
+                self.max_seq_len, 
+                num_layers=self.gcn_num_layers,
+                hidden_channels=self.gcn_hidden_channels
+            )
+        elif self.feature_extractor == "simple_gcn":
+            self.feature_extraction_network = SimpleGCN_Layer(
+                self.scatter_in_dim,
+                self.max_seq_len,
+                num_layers=self.gcn_num_layers,
+                output_dim=self.scatter_in_dim * self.gcn_num_layers
+            )
+        else:
+            raise ValueError(f"Unknown feature_extractor: {self.feature_extractor}. Use 'scattering', 'gcn', or 'simple_gcn'.")
 
-        self.pos_encoder = PositionalEncoding(d_model=self.scattering_network.out_shape(), max_len=self.max_seq_len)
+        self.pos_encoder = PositionalEncoding(d_model=self.feature_extraction_network.out_shape(), max_len=self.max_seq_len)
 
         self.row_encoder = TransformerEncoder(
             num_layers=self.layers,
-            input_dim=self.scattering_network.out_shape(),
+            input_dim=self.feature_extraction_network.out_shape(),
             num_heads=self.nhead,
             dim_feedforward=self.hidden_dim,
             dropout=self.probs,
         )
 
-        self.bottleneck_module = BaseBottleneck(self.scattering_network.out_shape(), self.hidden_dim, self.latent_dim)
+        self.bottleneck_module = BaseBottleneck(self.feature_extraction_network.out_shape(), self.hidden_dim, self.latent_dim)
 
         # -------------------------
         # Decoders
@@ -228,6 +296,88 @@ class ProtSCAPE(TGTransformerBaseModel_ATLAS):
     def reconstruct_xyz(self, z_rep):
         h = self.xyz_decoder(z_rep)
         return h.view(-1, self.num_nodes, 3)
+    
+    def apply_node_feature_ablations(self, feat_dense, coor_dense):
+        """
+        Apply node feature ablations by actually removing features from the input.
+        OPTIMIZED: Uses pre-computed indices for efficient slicing.
+        
+        Args:
+            feat_dense: (B, N, 3) - [Z, res, aa]
+            coor_dense: (B, N, 3) - xyz coordinates
+            
+        Returns:
+            Modified feat_dense with only active features, coor_dense (or None if ablated)
+        """
+        B, N, _ = feat_dense.shape
+        device = feat_dense.device
+        
+        # OPTIMIZATION: Use direct indexing instead of list building + concatenation
+        # This is MUCH faster than building a list and concatenating
+        if self.randomize_atomic_number or self.randomize_residue_index or self.randomize_amino_acid:
+            # Slow path: need to handle randomization
+            active_features = []
+            
+            if self.use_atomic_number:
+                if self.randomize_atomic_number:
+                    feat = torch.randint(0, self.num_Z, (B, N, 1), device=device, dtype=feat_dense.dtype)
+                else:
+                    feat = feat_dense[:, :, 0:1]
+                active_features.append(feat)
+            
+            if self.use_residue_index:
+                if self.randomize_residue_index:
+                    feat = torch.randint(0, self.num_residues, (B, N, 1), device=device, dtype=feat_dense.dtype)
+                else:
+                    feat = feat_dense[:, :, 1:2]
+                active_features.append(feat)
+            
+            if self.use_amino_acid:
+                if self.randomize_amino_acid:
+                    feat = torch.randint(0, self.num_aa, (B, N, 1), device=device, dtype=feat_dense.dtype)
+                else:
+                    feat = feat_dense[:, :, 2:3]
+                active_features.append(feat)
+            
+            feat_dense = torch.cat(active_features, dim=-1)
+        else:
+            # FAST path: direct indexing with pre-computed indices (no list/cat overhead)
+            idx_tensor = self._feature_idx_tensor.to(device)
+            feat_dense = feat_dense.index_select(dim=2, index=idx_tensor)
+        
+        # Handle coordinates
+        if not self.use_xyz:
+            coor_dense = None  # Completely remove xyz
+        elif self.randomize_xyz:
+            # Random coordinates in reasonable range (e.g., -5 to 5 nm)
+            coor_dense = torch.randn_like(coor_dense) * 2.0
+        
+        return feat_dense, coor_dense
+    
+    def apply_edge_feature_ablations(self, edges, B, N):
+        """
+        Apply edge feature ablations by completely removing them.
+        
+        Args:
+            edges: (B, N, N, edge_dim) dense edge features or None
+            B: batch size
+            N: number of nodes
+            
+        Returns:
+            Modified edges or None (None means no edge features)
+        """
+        if edges is None:
+            return None
+        
+        # If ablating edge features, return None (complete removal)
+        if not self.use_edge_features or self.zero_edge_features:
+            return None
+        
+        # If randomizing, replace with random features (not ablation, but useful for control)
+        if self.randomize_edge_features:
+            edges = torch.randn_like(edges)
+        
+        return edges
 
     def encode(self, batch):
         x_gt_dense, node_mask = to_dense_batch(batch.x, batch.batch, max_num_nodes=self.num_nodes)
@@ -246,6 +396,9 @@ class ProtSCAPE(TGTransformerBaseModel_ATLAS):
 
         feat_dense = scalar_feat.view(B, N, 3)
         coor_dense = coors.view(B, N, 3)
+        
+        # Apply node feature ablations
+        feat_dense, coor_dense = self.apply_node_feature_ablations(feat_dense, coor_dense)
 
         feats = self.feat_embed(feat_dense)       # (B,N,input_dim)
         coors = coor_dense                        # (B,N,3)
@@ -262,6 +415,8 @@ class ProtSCAPE(TGTransformerBaseModel_ATLAS):
                 edge_dim=self.edge_attr_dim,
                 device=feats.device,
             )
+            # Apply edge feature ablations
+            edges = self.apply_edge_feature_ablations(edges, B, N)
 
         # EGNN
         for layer in self.egnn_layers:
@@ -272,12 +427,17 @@ class ProtSCAPE(TGTransformerBaseModel_ATLAS):
 
         # scattering input
         feats_flat = feats.reshape(B * N, self.input_dim)
-        coors_flat = coors.reshape(B * N, 3)
-
+        
         x_orig = batch.x
-        batch.x = torch.cat([feats_flat, coors_flat], dim=-1)  # (B*N,input_dim+3)
+        
+        # Concatenate coordinates only if not ablated
+        if coors is not None:
+            coors_flat = coors.reshape(B * N, 3)
+            batch.x = torch.cat([feats_flat, coors_flat], dim=-1)  # (B*N, input_dim+3)
+        else:
+            batch.x = feats_flat  # (B*N, input_dim) - no coordinates
 
-        coeffs = self.scattering_network(batch)
+        coeffs = self.feature_extraction_network(batch)
         if coeffs.ndim == 2:
             coeffs = coeffs.unsqueeze(0)
 
