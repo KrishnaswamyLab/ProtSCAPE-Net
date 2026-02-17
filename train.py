@@ -56,7 +56,7 @@ if __name__ == "__main__":
         # Auto-generate pkl_path if not explicitly provided
         if not cli_args.pkl_path:
             protein_prefix = cli_args.protein.split("_")[0]  # e.g., "7lp1" from "7lp1_A"
-            config["pkl_path"] = f"data/graphs/{cli_args.protein}_A_graphs.pkl"
+            config["pkl_path"] = f"data/graphs/{cli_args.protein}_C_graphs.pkl"
     
     if cli_args.pkl_path:
         config["pkl_path"] = cli_args.pkl_path

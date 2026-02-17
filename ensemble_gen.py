@@ -7,7 +7,8 @@ Runs the complete Latent Diffusion Pipeline:
 4. Decode to coordinates and export PDBs
 
 Usage:
-  python ensemble_generation.py --input_data path/to/data.npy --checkpoint_dir checkpoints/ --output_dir output/
+  python ensemble_gen.py --config configs/config_ensemble.yaml
+  python ensemble_gen.py --config configs/config_ensemble.yaml --skip_ae --skip_ddpm
 """
 import argparse
 import sys
@@ -22,6 +23,7 @@ import torch
 sys.path.append(str(Path(__file__).parent))
 
 from protscape.config import Config
+from utils.config import load_config
 from protscape.train_ae import train_ae
 from protscape.train_ddpm import train_ddpm
 from protscape.generate import generate
@@ -235,8 +237,8 @@ def decode_and_export_pdbs(config):
     protein_id = config.protein.lower()
     dataset_path = config.dataset_path
     
-    # Try pattern: {protein_id}_A_graphs.pkl
-    pattern = f"{protein_id}_A_graphs.pkl"
+    # Try pattern: {protein_id}_C_graphs.pkl
+    pattern = f"{protein_id}_C_graphs.pkl"
     matches = glob.glob(os.path.join(dataset_path, pattern))
     
     if matches:
@@ -245,7 +247,7 @@ def decode_and_export_pdbs(config):
     else:
         raise FileNotFoundError(
             f"No dataset found matching pattern '{pattern}'. "
-            f"Expected format: {{pdbid}}_A_graphs.pkl"
+            f"Expected format: {{pdbid}}_C_graphs.pkl"
         )
     
     with open(dataset_path, "rb") as f:
@@ -286,6 +288,27 @@ def decode_and_export_pdbs(config):
     model_args.task = "reg"
     model_args.num_mp_layers = 2
     model_args.mp_hidden = 256
+
+    # Add ablation configuration for feature extractors and node/edge features
+    if hasattr(config, 'feature_extractor'):
+        model_args.feature_extractor = config.feature_extractor
+    else:
+        model_args.feature_extractor = "scattering"  # default
+    
+    if hasattr(config, 'gcn_num_layers'):
+        model_args.gcn_num_layers = config.gcn_num_layers
+    else:
+        model_args.gcn_num_layers = 4
+    
+    if hasattr(config, 'gcn_hidden_channels'):
+        model_args.gcn_hidden_channels = config.gcn_hidden_channels
+    else:
+        model_args.gcn_hidden_channels = None
+    
+    if hasattr(config, 'ablate_node_features'):
+        model_args.ablate_node_features = config.ablate_node_features
+    if hasattr(config, 'ablate_edge_features'):
+        model_args.ablate_edge_features = config.ablate_edge_features
     
     print(f"[model] num_nodes={model_args.num_nodes}, latent_dim={model_args.latent_dim}")
     
@@ -439,60 +462,74 @@ def decode_and_export_pdbs(config):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run Hierarchical Latent Diffusion Pipeline")
-    parser.add_argument("--input_data", type=str, help="Path to original .npy data")
-    parser.add_argument("--checkpoint_dir", type=str, help="Directory for checkpoints (AE & DDPM)")
-    parser.add_argument("--output_dir", type=str, default="outputs", help="Directory for outputs")
+    parser = argparse.ArgumentParser(
+        description="Run Hierarchical Latent Diffusion Pipeline for Conformational Ensemble Generation",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Edit configs/config_ensemble.yaml, then run:
+  python ensemble_gen.py --config configs/config_ensemble.yaml
+  
+  # Skip training stages (reuse existing checkpoints):
+  python ensemble_gen.py --config configs/config_ensemble.yaml --skip_ae --skip_ddpm
+  
+  # Override specific parameters:
+  python ensemble_gen.py --config configs/config_ensemble.yaml --n_pdb_samples 200 --epochs 500
+
+See configs/ENSEMBLE_CONFIG_GUIDE.md for detailed usage instructions.
+        """
+    )
+    
+    # Config file argument
+    parser.add_argument("--config", type=str, required=True,
+                        help="Path to YAML configuration file (configs/config_ensemble.yaml)")
+    
+    # Training control
     parser.add_argument("--skip_ae", action="store_true", help="Skip Autoencoder training")
     parser.add_argument("--skip_ddpm", action="store_true", help="Skip DDPM training")
     
-    # Arguments for decoding to coordinates and PDBs (optional overrides)
-    parser.add_argument("--decode_to_coords", action="store_true", help="Decode generated samples to coordinates")
-    parser.add_argument("--protein", type=str, default=None, help="Protein ID for PDB export")
-    parser.add_argument("--model_path", type=str, default=None, help="Path to ProtSCAPE model")
-    parser.add_argument("--dataset_path", type=str, default=None, help="Path to dataset graphs")
-    parser.add_argument("--pdb", type=str, default=None, help="Path to reference PDB file")
-    parser.add_argument("--n_pdb_samples", type=int, default=100, help="Number of samples to export as PDBs")
-    parser.add_argument("--normalize_xyz", action="store_true", help="Whether coordinates were z-score normalized")
-    parser.add_argument("--xyz_mu_path", type=str, default=None, help="Path to xyz mean for denormalization")
-    parser.add_argument("--xyz_sd_path", type=str, default=None, help="Path to xyz std for denormalization")
+    # Optional overrides for key parameters
+    parser.add_argument("--protein", type=str, default=None, help="Override protein ID")
+    parser.add_argument("--n_pdb_samples", type=int, default=None, help="Override number of PDB samples to export")
+    parser.add_argument("--output_dir", type=str, default=None, help="Override output directory")
+    parser.add_argument("--epochs", type=int, default=None, help="Override number of training epochs")
     
     args = parser.parse_args()
     
-    # Initialize Config with user arguments
-    config = Config(
-    )
-    args.output_dir = config.output_dir
-    # Apply command-line overrides for decoding parameters
-    if args.decode_to_coords:
-        config.decode_to_coords = True
+    # Load configuration from YAML file
+    if not os.path.exists(args.config):
+        raise FileNotFoundError(f"Config file not found: {args.config}")
+    
+    config_dict = load_config(args.config)
+    
+    # Initialize Config from dictionary
+    config = Config(**config_dict)
+    
+    # Apply command-line overrides
     if args.protein is not None:
         config.protein = args.protein
-    if args.model_path is not None:
-        config.model_path = args.model_path
-    if args.dataset_path is not None:
-        config.dataset_path = args.dataset_path
-    if args.pdb is not None:
-        config.pdb = args.pdb
     if args.n_pdb_samples is not None:
         config.n_pdb_samples = args.n_pdb_samples
-    if args.normalize_xyz:
-        config.normalize_xyz = True
-    if args.xyz_mu_path is not None:
-        config.xyz_mu_path = args.xyz_mu_path
-    if args.xyz_sd_path is not None:
-        config.xyz_sd_path = args.xyz_sd_path
+    if args.output_dir is not None:
+        config.output_dir = args.output_dir
+    if args.epochs is not None:
+        config.epochs = args.epochs
     
-    print("="*60)
-    print(f"Running Pipeline with:")
+    print("="*80)
+    print("ProtSCAPE Ensemble Generation Pipeline")
+    print("="*80)
+    print(f"Configuration: {args.config}")
+    print(f"  Protein: {config.protein}")
     print(f"  Input Data: {config.original_data_path}")
     print(f"  Checkpoints: {config.checkpoint_dir}")
     print(f"  Outputs: {config.output_dir}")
     if config.decode_to_coords:
-        print(f"  Protein: {config.protein}")
         print(f"  Model: {config.model_path}")
+        print(f"  PDB Reference: {config.pdb}")
         print(f"  PDB Samples: {config.n_pdb_samples}")
-    print("="*60)
+    print(f"  Training Epochs: {config.epochs}")
+    print(f"  Batch Size: {config.batch_size}")
+    print("="*80)
     
     # 1. Train Autoencoder
     if not args.skip_ae:
@@ -517,10 +554,16 @@ def main():
         print("\n>>> Stage 4: Decoding to Coordinates and Exporting PDBs")
         decode_and_export_pdbs(config)
     
-    print("\n" + "="*60)
+    print("\n" + "="*80)
     print("Pipeline Execution Completed Successfully!")
     print(f"Results saved to: {config.output_dir}")
-    print("="*60)
+    print("="*80)
+    print("\nGenerated files:")
+    print(f"  - Generated samples: {config.output_dir}/generated_samples.npy")
+    if config.decode_to_coords:
+        print(f"  - PDB structures: {config.output_dir}/generated_pdbs/")
+        print(f"  - MolProbity scores: {config.output_dir}/molprobity_scores.csv")
+    print("="*80)
 
 
 if __name__ == "__main__":

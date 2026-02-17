@@ -3,8 +3,8 @@
 
 # Dataset
 dataset: "atlas"
-protein: "6h86"
-pkl_path: "data/graphs/6h86_A_graphs.pkl"
+protein: "7jfl"
+pkl_path: "data/graphs/7jfl_C_graphs.pkl"
 
 # Model hyperparameters
 latent_dim: 128

@@ -626,7 +626,7 @@ def main():
     dataset_path = 'data/graphs/'
     
     # Try pattern: {protein_id}_{chain}_graphs.pkl
-    pattern = f"{protein_id}_A_graphs.pkl"
+    pattern = f"{protein_id}_C_graphs.pkl"
     matches = glob.glob(os.path.join(dataset_path, pattern))
     
     if matches:

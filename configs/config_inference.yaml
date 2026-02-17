@@ -2,13 +2,13 @@
 # Default config for atomic-level graph inference/testing
 
 # Dataset/Model
-protein: "6h86"
-graphs_pkl: "data/graphs/6h86_A_graphs.pkl"
-ckpt_path: "train_logs/progsnn_logs_run_deshaw_2026-01-27-140711/model_FINAL_6h86.pt"  # Required - override this!
-
+protein: "7jfl"
+graphs_pkl: "data/graphs/7jfl_C_graphs.pkl"
+# ckpt_path: "train_logs/progsnn_logs_run_deshaw_2026-01-27-140711/model_FINAL_6h86.pt"  # Required - override this!
+ckpt_path: "train_logs/progsnn_logs_run_atlas_2026-02-11-130333/model_FINAL_7jfl_noatomAA.pt"
 # MDAnalysis export (must match how graphs were built)
-pdb: "data/datasets/6h86_A_protein/6h86_A.pdb"
-xtc: "data/datasets/6h86_A_protein/6h86_A_prod_R1_fit.xtc"
+pdb: "data/datasets/7jfl_C_protein/7jfl_C.pdb"
+xtc: "data/datasets/7jfl_C_protein/7jfl_C_prod_R1_fit.xtc"
 # DataLoader
 batch_size: 1
 num_workers: 2
@@ -38,7 +38,7 @@ normalize_xyz: false
 # Evaluation + export
 export_pdb: true
 n_pdb_frames: 50
-out_dir: "Inference"
+out_dir: "Ablations/7jfl/inference_test/"  # Directory to save outputs (PDBs, plots, etc.)
 
 # Latent visualization
 save_latents: true
@@ -49,3 +49,27 @@ seed: 0
 
 # Device
 device: "cuda"
+
+# ====================================
+# ABLATION: Multiple simultaneous ablations
+# ====================================
+
+# 1. feature extractor: use scattering transform
+feature_extractor: "scattering"
+
+# 2. Use only residue index and xyz (ablate atomic number and amino acid)
+ablate_node_features:
+  use_atomic_number: false   # <--- ABLATED
+  use_residue_index: true
+  use_amino_acid: false      # <--- ABLATED
+  use_xyz: true
+  randomize_atomic_number: false
+  randomize_residue_index: false
+  randomize_amino_acid: false
+  randomize_xyz: false
+
+# 3. Remove edge features
+ablate_edge_features:
+  use_edge_features: true   # <--- ABLATED
+  randomize_edge_features: false
+  zero_edge_features: false

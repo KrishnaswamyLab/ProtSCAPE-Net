@@ -1,0 +1,143 @@
+# ProtSCAPE Ensemble Generation Configuration
+# Edit this file for different proteins and experiments
+# Usage: python ensemble_gen.py --config configs/config_ensemble.yaml
+
+# -------------------------------------------------------------------------
+# Protein Selection - EDIT THIS FOR DIFFERENT RUNS
+# -------------------------------------------------------------------------
+# Options: "6h86", "6jv8", "6p5h", "7jfl", "7lp1", "ubiquitin", "gb3"
+# For ablations, use descriptive names like "6h86_gcn", "6h86_no_edges", etc.
+protein: "7jfl"
+
+# -------------------------------------------------------------------------
+# Data Configuration
+# -------------------------------------------------------------------------
+input_dim: 128
+latent_dim: 16
+
+# Path to input latent representations
+# Edit this based on your protein and experiment:
+# - Standard inference: "Inference/{protein}/latents_zrep_10k.npy"
+# - Ablations: "Ablations/{protein}/inference_test/{ablation}/latents_zrep_10k.npy"
+original_data_path: "Ablations/7jfl/inference_test/7jfl_noatomAA/latents_zrep_10k.npy"
+
+# -------------------------------------------------------------------------
+# Paths & Directories (auto-constructed from protein name)
+# -------------------------------------------------------------------------
+checkpoint_dir: "checkpoints/7jfl"
+output_dir: "Generation/Ensemble/Ablations/7jfl_noatomAA"
+
+# Autoencoder checkpoint paths
+ae_checkpoint: "checkpoints/7jfl/autoencoder_best.pt"
+ae_normalization: "checkpoints/7jfl/ae_normalization.npz"
+
+# -------------------------------------------------------------------------
+# DDPM Model Architecture
+# -------------------------------------------------------------------------
+data_dim: 16  # Matches latent_dim
+hidden_dims: [512, 1024, 1024, 512]
+dropout: 0.1
+
+# -------------------------------------------------------------------------
+# Diffusion Parameters
+# -------------------------------------------------------------------------
+timesteps: 1000
+beta_start: 0.0001
+beta_end: 0.02
+beta_schedule: "cosine"
+clip_x0: 3.5
+
+# -------------------------------------------------------------------------
+# Training Hyperparameters
+# -------------------------------------------------------------------------
+batch_size: 256
+epochs: 1000
+learning_rate: 0.0001
+weight_decay: 0.0001
+grad_clip: 1.0
+use_cosine_schedule: true
+
+# -------------------------------------------------------------------------
+# EMA (Exponential Moving Average)
+# -------------------------------------------------------------------------
+use_ema: true
+ema_decay: 0.9999
+
+# -------------------------------------------------------------------------
+# Logging & Saving
+# -------------------------------------------------------------------------
+save_every: 100
+
+# -------------------------------------------------------------------------
+# Decoding & PDB Export Configuration
+# -------------------------------------------------------------------------
+decode_to_coords: true
+
+# Path to trained ProtSCAPE model (EDIT THIS for your model)
+# Format: "train_logs/{run_dir}/model_FINAL_{protein}.pt"
+model_path: "train_logs/progsnn_logs_run_atlas_2026-02-11-130333/model_FINAL_7jfl_noatomAA.pt"
+
+# Path to graph dataset directory
+dataset_path: "data/graphs/"
+
+# Reference PDB structure
+# Format: "data/datasets/{protein}_A_protein/{protein}_A.pdb"
+pdb: "data/datasets/7jfl_C_protein/7jfl_C.pdb"
+
+# Number of PDB structures to export
+n_pdb_samples: 100
+
+# XYZ normalization (if coordinates were z-score normalized during training)
+normalize_xyz: false
+xyz_mu_path: null
+xyz_sd_path: null
+
+# ====================================
+# ABLATION: Multiple simultaneous ablations
+# ====================================
+
+# 1. feature extractor: use scattering transform
+feature_extractor: "scattering"
+
+# 2. Use only residue index and xyz (ablate atomic number and amino acid)
+ablate_node_features:
+  use_atomic_number: false   # <--- ABLATED
+  use_residue_index: true
+  use_amino_acid: false      # <--- ABLATED
+  use_xyz: true
+  randomize_atomic_number: false
+  randomize_residue_index: false
+  randomize_amino_acid: false
+  randomize_xyz: false
+
+# 3. Remove edge features
+ablate_edge_features:
+  use_edge_features: true   # <--- ABLATED
+  randomize_edge_features: false
+  zero_edge_features: false
+
+# -------------------------------------------------------------------------
+# Quick Setup Examples (uncomment and edit as needed)
+# -------------------------------------------------------------------------
+
+# # Example: 6h86 GCN Ablation
+# protein: "6h86_gcn"
+# original_data_path: "Ablations/6h86/inference_test/6h86_GCN/latents_zrep_10k.npy"
+# model_path: "train_logs/progsnn_logs_run_atlas_2026-02-06-132413/model_FINAL_6h86_gcn.pt"
+# output_dir: "Generation/Ensemble/Ablations/6h86_gcn"
+
+# # Example: 7jfl
+# protein: "7jfl"
+# original_data_path: "Inference/7jfl/latents_zrep_10k.npy"
+# model_path: "train_logs/progsnn_logs_run_atlas_2026-01-26-120329/model_FINAL_7jfl.pt"
+# pdb: "data/datasets/7jfl_A_protein/7jfl_A.pdb"
+# checkpoint_dir: "checkpoints/7jfl"
+# output_dir: "Generation/Ensemble/7jfl"
+
+# # Example: 7lp1
+# protein: "7lp1"
+# original_data_path: "Inference/7lp1/latents_zrep_10k.npy"
+# model_path: "train_logs/progsnn_logs_run_atlas_2026-01-26-120329/model_FINAL_7lp1.pt"
+# pdb: "data/datasets/7lp1_A_protein/7lp1_A.pdb"
+# checkpoint_dir: "checkpoints/7lp1"
+# output_dir: "Generation/Ensemble/7lp1"

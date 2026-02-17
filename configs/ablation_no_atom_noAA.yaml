@@ -3,8 +3,8 @@
 
 # Dataset
 dataset: "atlas"
-protein: "7lp1"
-pkl_path: "data/graphs/7lp1_A_graphs.pkl"
+protein: "7jfl"
+pkl_path: "data/graphs/7jfl_C_graphs.pkl"
 
 # Model hyperparameters
 latent_dim: 128
@@ -37,7 +37,7 @@ num_workers: 15
 
 # Logging/Saving
 save_dir: "train_logs/"
-wandb_project: "protscape-ablations-7lp1-no-atom-noAA"
+wandb_project: "protscape-ablations-7jfl-no-atom-noAA"
 
 # Split parameters
 split_seed: 0

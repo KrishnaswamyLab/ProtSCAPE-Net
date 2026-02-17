@@ -17,11 +17,11 @@ neb_lr: 0.05          # Learning rate for NEB optimization
 # ============================================================================
 # Dataset and model paths
 # ============================================================================
-protein: "7lp1"  # Protein identifier (e.g., "7jfl", "7lp1", "1bx7")
-latent_path: "Inference/7lp1/latents_zrep_10k.npy"
-model_path: "train_logs/progsnn_logs_run_atlas_2026-01-26-120329/model_FINAL_7lp1.pt"
+protein: "7jfl"  # Protein identifier (e.g., "7jfl", "7lp1", "1bx7")
+latent_path: "Ablations/7jfl/inference_test/7jfl_noatomAA/latents_zrep_10k.npy"
+model_path: "train_logs/progsnn_logs_run_atlas_2026-02-11-130333/model_FINAL_7jfl_noatomAA.pt"
 atlas_rt_path: "data/prepare_atlas.py"
-pdb: "data/datasets/7lp1_A_protein/7lp1_A.pdb"  # Auto-detected if null
+pdb: "data/datasets/7jfl_C_protein/7jfl_C.pdb"  # Auto-detected if null
 # ============================================================================
 # Path generation settings
 # ============================================================================
@@ -53,7 +53,7 @@ phate_t: 10           # PHATE diffusion time
 # ============================================================================
 # Output settings
 # ============================================================================
-out: "Generation/7lp1/neb_7lp1_singlepath.pkl"  # Output path for results
+out: "Generation/NEB/7jfl_noatomAA/neb_7jfl_noatomAA_singlepath.pkl"  # Output path for results
 
 # ============================================================================
 # Model architecture (must match training config)
@@ -73,34 +73,28 @@ task: "reg"
 num_mp_layers: 2
 mp_hidden: 256
 # ====================================
-# ABLATION STUDY CONFIGURATIONS
+# ABLATION: Multiple simultaneous ablations
 # ====================================
 
-# 1. Scattering/Wavelet vs GCN Ablation
-# Options: "scattering" (default), "gcn", "simple_gcn"
+# 1. feature extractor: use scattering transform
 feature_extractor: "scattering"
-gcn_num_layers: 4              # Number of GCN layers if using GCN
-gcn_hidden_channels: null      # GCN hidden dim (null = same as in_channels)
 
-# 2. Node Feature Ablation
-# Control which node features to use/mask
+# 2. Use only residue index and xyz (ablate atomic number and amino acid)
 ablate_node_features:
-  use_atomic_number: true      # Z (atomic number)
-  use_residue_index: true      # Residue sequential index
-  use_amino_acid: true         # Amino acid type
-  use_xyz: true                # 3D coordinates
-  
-  # Alternative: use random features instead of real ones
+  use_atomic_number: false   # <--- ABLATED
+  use_residue_index: true
+  use_amino_acid: false      # <--- ABLATED
+  use_xyz: true
   randomize_atomic_number: false
   randomize_residue_index: false
   randomize_amino_acid: false
   randomize_xyz: false
 
-# 3. Edge Feature Ablation
+# 3. Remove edge features
 ablate_edge_features:
-  use_edge_features: true      # Use edge attributes in EGNN
-  randomize_edge_features: false  # Use random edge features
-  zero_edge_features: false    # Set edge features to zero
+  use_edge_features: true   # <--- ABLATED
+  randomize_edge_features: false
+  zero_edge_features: false
 
 # ============================================================================
 # Legacy LEP parameters (ignored when method="NEB")
