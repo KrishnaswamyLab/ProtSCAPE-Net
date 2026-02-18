@@ -47,6 +47,7 @@ from utils.generation_helpers import (
 )
 from utils.openmm_eval import build_grad_fn_openmm
 from utils.geometry import kabsch_align_np
+from utils.energy_path_metrics import compute_energy_metrics_from_pdb_dir
 
 NM_TO_ANG = 10.0
 
@@ -813,6 +814,29 @@ def main():
             print(f"[warn] No metrics computed for path {b}")
         
         # ====================================================================
+        # Compute Energy Metrics from PDB files
+        # ====================================================================
+        print(f"[energy] Computing energy metrics for path {b}...")
+        try:
+            energy_metrics = compute_energy_metrics_from_pdb_dir(
+                pdb_dir=str(pdb_dir_b),
+                setup_simulation_fn=setup_simulation,
+                reference_pdb=pdb_path,
+                sel_atom_indices=sel_idx,
+                normalize_by_start=True,
+            )
+            # Add energy metrics to first metric entry if we have metrics
+            if metrics and len(metrics) > 0:
+                metrics[0].update(energy_metrics)
+            elif len(metrics) == 0:
+                # If no MolProbity metrics but we have energy metrics, create an entry
+                energy_metrics['path'] = b
+                energy_metrics['frame'] = 0
+                all_metrics.append(energy_metrics)
+        except Exception as e:
+            print(f"[warn] Failed to compute energy metrics for path {b}: {str(e)[:100]}")
+        
+        # ====================================================================
         # Visualize Latent Space with Path
         # ====================================================================
         viz_path = out_dir / f"{prefix}_neb_path_{b:02d}_latent_viz.png"
@@ -880,6 +904,30 @@ def main():
                 print(f"{'Inter-frame RMSD (Å) - Mean':<40} {rmsd_mean:>6.3f}")
                 print(f"{'Inter-frame RMSD (Å) - Std Dev':<40} {rmsd_std:>6.3f}")
                 print(f"{'Inter-frame RMSD (Å) - Max':<40} {rmsd_max:>6.3f}")
+            
+            # Add energy metrics if available
+            if 'energy_mean' in path_df.columns:
+                print("\nEnergy Metrics (kJ/mol):")
+                energy_mean = path_df['energy_mean'].iloc[0]
+                energy_std = path_df['energy_std'].iloc[0]
+                energy_min = path_df['energy_min'].iloc[0]
+                energy_max = path_df['energy_max'].iloc[0]
+                print(f"{'  Mean':<40} {energy_mean:>8.2f}")
+                print(f"{'  Std Dev':<40} {energy_std:>8.2f}")
+                print(f"{'  Min':<40} {energy_min:>8.2f}")
+                print(f"{'  Max':<40} {energy_max:>8.2f}")
+            
+            if 'energy_integral_trapz' in path_df.columns:
+                energy_integral_trapz = path_df['energy_integral_trapz'].iloc[0]
+                energy_integral_sum = path_df['energy_integral_sum'].iloc[0]
+                print(f"{'  Integral (Trapezoid)':<40} {energy_integral_trapz:>8.2f}")
+                print(f"{'  Integral (Sum)':<40} {energy_integral_sum:>8.2f}")
+            
+            if 'energy_start' in path_df.columns and 'energy_end' in path_df.columns:
+                energy_start = path_df['energy_start'].iloc[0]
+                energy_end = path_df['energy_end'].iloc[0]
+                print(f"{'  Start':<40} {energy_start:>8.2f}")
+                print(f"{'  End':<40} {energy_end:>8.2f}")
         
         print("="*80)
     else:
