@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=7jfl_GCN
+#SBATCH --job-name=6p5h_GCN
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --partition=scavenge_gpu
@@ -16,7 +16,7 @@ echo "ProtSCAPE-Net GCN Ablation Studies"
 echo "True Ablations: Components completely removed"
 echo "======================================"
 
-PROTEIN=${1:-"7jfl"}  # Default to 7jfl if not provided
+PROTEIN=${1:-"6p5h"}  # Default to 6p5h if not provided
 
 ABLATIONS=(
     "configs/ablation_gcn.yaml"              # Architecture ablation

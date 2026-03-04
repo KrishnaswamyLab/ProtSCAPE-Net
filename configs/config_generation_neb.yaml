@@ -17,11 +17,11 @@ neb_lr: 0.05          # Learning rate for NEB optimization
 # ============================================================================
 # Dataset and model paths
 # ============================================================================
-protein: "7jfl"  # Protein identifier (e.g., "7jfl", "7lp1", "1bx7")
-latent_path: "Ablations/7jfl/inference_test/7jfl_noatomAA/latents_zrep_10k.npy"
-model_path: "train_logs/progsnn_logs_run_atlas_2026-02-11-130333/model_FINAL_7jfl_noatomAA.pt"
+protein: "6h86"  # Protein identifier (e.g., "7jfl", "7lp1", "1bx7")
+latent_path: "Ablations/6h86/inference_test/6h86_GCN/latents_zrep_10k.npy"
+model_path: "train_logs/progsnn_logs_run_atlas_2026-02-06-132413/model_FINAL_6h86_gcn.pt"
 atlas_rt_path: "data/prepare_atlas.py"
-pdb: "data/datasets/7jfl_C_protein/7jfl_C.pdb"  # Auto-detected if null
+pdb: "data/datasets/6h86_A_protein/6h86_A.pdb"  # Auto-detected if null
 # ============================================================================
 # Path generation settings
 # ============================================================================
@@ -53,7 +53,7 @@ phate_t: 10           # PHATE diffusion time
 # ============================================================================
 # Output settings
 # ============================================================================
-out: "Generation/NEB/7jfl_noatomAA/neb_7jfl_noatomAA_singlepath.pkl"  # Output path for results
+out: "Generation/NEB/6h86_GCN/neb_6h86_GCN_singlepath.pkl"  # Output path for results
 
 # ============================================================================
 # Model architecture (must match training config)
@@ -73,26 +73,26 @@ task: "reg"
 num_mp_layers: 2
 mp_hidden: 256
 # ====================================
-# ABLATION: Multiple simultaneous ablations
+# ABLATION: Use GCN instead of Scattering
 # ====================================
+feature_extractor: "gcn"  # Options: "scattering" (default), "gcn", "simple_gcn"
+gcn_num_layers: 4         # Number of GCN layers (matches scattering depth)
+gcn_hidden_channels: null # null = same as input_dim
 
-# 1. feature extractor: use scattering transform
-feature_extractor: "scattering"
-
-# 2. Use only residue index and xyz (ablate atomic number and amino acid)
+# Node features - keep all enabled for fair comparison
 ablate_node_features:
-  use_atomic_number: false   # <--- ABLATED
+  use_atomic_number: true
   use_residue_index: true
-  use_amino_acid: false      # <--- ABLATED
+  use_amino_acid: true
   use_xyz: true
   randomize_atomic_number: false
   randomize_residue_index: false
   randomize_amino_acid: false
   randomize_xyz: false
 
-# 3. Remove edge features
+# Edge features - keep enabled
 ablate_edge_features:
-  use_edge_features: true   # <--- ABLATED
+  use_edge_features: true
   randomize_edge_features: false
   zero_edge_features: false
 

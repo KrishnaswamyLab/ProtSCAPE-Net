@@ -26,7 +26,7 @@ class Config:
     input_dim: int = 128            # Original data dimension
     latent_dim: int = 16            # Compressed latent dimension
     data_path: str = "data/latents_compressed_16d.npy"
-    original_data_path: str = "Ablations/7jfl/inference_test/7jfl_noatomAA/latents_zrep_10k.npy"
+    original_data_path: str = "Ablations/6p5h/inference_test/6p5h_GCN/latents_zrep_10k.npy"
     
     # -------------------------------------------------------------------------
     # Autoencoder Configuration
@@ -78,29 +78,29 @@ class Config:
     # Decoding & PDB Export Configuration
     # -------------------------------------------------------------------------
     decode_to_coords: bool = True
-    protein: str = "7jfl_noatomAA"  # Used for naming outputs and loading specific models/datasets
-    model_path: str = "train_logs/progsnn_logs_run_atlas_2026-02-11-130333/model_FINAL_7jfl_noatomAA.pt"
+    protein: str = "6p5h_GCN"  # Used for naming outputs and loading specific models/datasets
+    model_path: str = "train_logs/progsnn_logs_run_atlas_2026-02-18-184924/model_FINAL_6p5h_GCN.pt"
     dataset_path: str = "data/graphs/"
-    pdb: Optional[str] = "data/datasets/7jfl_C_protein/7jfl_C.pdb"
-    output_dir: str = "Generation/Ensemble/Ablations/7jfl_noatomAA"
-    checkpoint_dir: str = "checkpoints/7jfl"
-    ae_checkpoint: str = "checkpoints/7jfl/autoencoder_best.pt"
-    ae_normalization: str = "checkpoints/7jfl/ae_normalization.npz"
+    pdb: Optional[str] = "data/datasets/6p5h_A_protein/6p5h_A.pdb"
+    output_dir: str = "Generation/Ensemble/Ablations/6p5h_GCN"
+    checkpoint_dir: str = "checkpoints/6p5h"
+    ae_checkpoint: str = "checkpoints/6p5h/autoencoder_best.pt"
+    ae_normalization: str = "checkpoints/6p5h/ae_normalization.npz"
     n_pdb_samples: int = 50
     normalize_xyz: bool = False
     xyz_mu_path: Optional[str] = None
     xyz_sd_path: Optional[str] = None
 
     # -------------------------------------------------------------------------
-    feature_extractor: str = "scattering"  # Options: "scattering" (default), "gcn", "simple_gcn"
-    # gcn_num_layers: int = 4         # Number of GCN layers (matches scattering depth)
-    # gcn_hidden_channels: Optional[int] = None # null = same as input_dim
+    feature_extractor: str = "gcn"  # Options: "scattering" (default), "gcn", "simple_gcn"
+    gcn_num_layers: int = 4         # Number of GCN layers (matches scattering depth)
+    gcn_hidden_channels: Optional[int] = None # null = same as input_dim
     
     # Node features - keep all enabled for fair comparison
     ablate_node_features: dict = field(default_factory=lambda: {
-        "use_atomic_number": False,
+        "use_atomic_number": True,
         "use_residue_index": True,
-        "use_amino_acid": False,
+        "use_amino_acid": True,
         "use_xyz": True,
         "randomize_atomic_number": False,
         "randomize_residue_index": False,

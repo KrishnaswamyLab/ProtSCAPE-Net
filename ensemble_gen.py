@@ -237,8 +237,8 @@ def decode_and_export_pdbs(config):
     protein_id = config.protein.lower()
     dataset_path = config.dataset_path
     
-    # Try pattern: {protein_id}_C_graphs.pkl
-    pattern = f"{protein_id}_C_graphs.pkl"
+    # Try pattern: {protein_id}_A_graphs.pkl
+    pattern = f"{protein_id}_A_graphs.pkl"
     matches = glob.glob(os.path.join(dataset_path, pattern))
     
     if matches:
@@ -247,7 +247,7 @@ def decode_and_export_pdbs(config):
     else:
         raise FileNotFoundError(
             f"No dataset found matching pattern '{pattern}'. "
-            f"Expected format: {{pdbid}}_C_graphs.pkl"
+            f"Expected format: {{pdbid}}_A_graphs.pkl"
         )
     
     with open(dataset_path, "rb") as f:

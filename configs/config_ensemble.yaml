@@ -7,7 +7,7 @@
 # -------------------------------------------------------------------------
 # Options: "6h86", "6jv8", "6p5h", "7jfl", "7lp1", "ubiquitin", "gb3"
 # For ablations, use descriptive names like "6h86_gcn", "6h86_no_edges", etc.
-protein: "7jfl"
+protein: "6p5h"
 
 # -------------------------------------------------------------------------
 # Data Configuration
@@ -19,17 +19,17 @@ latent_dim: 16
 # Edit this based on your protein and experiment:
 # - Standard inference: "Inference/{protein}/latents_zrep_10k.npy"
 # - Ablations: "Ablations/{protein}/inference_test/{ablation}/latents_zrep_10k.npy"
-original_data_path: "Ablations/7jfl/inference_test/7jfl_noatomAA/latents_zrep_10k.npy"
+original_data_path: "Ablations/6p5h/inference_test/6p5h_GCN/latents_zrep_10k.npy"
 
 # -------------------------------------------------------------------------
 # Paths & Directories (auto-constructed from protein name)
 # -------------------------------------------------------------------------
-checkpoint_dir: "checkpoints/7jfl"
-output_dir: "Generation/Ensemble/Ablations/7jfl_noatomAA"
+checkpoint_dir: "checkpoints/6p5h"
+output_dir: "Generation/Ensemble/Ablations/6p5h_GCN"
 
 # Autoencoder checkpoint paths
-ae_checkpoint: "checkpoints/7jfl/autoencoder_best.pt"
-ae_normalization: "checkpoints/7jfl/ae_normalization.npz"
+ae_checkpoint: "checkpoints/6p5h/autoencoder_best.pt"
+ae_normalization: "checkpoints/6p5h/ae_normalization.npz"
 
 # -------------------------------------------------------------------------
 # DDPM Model Architecture
@@ -75,14 +75,14 @@ decode_to_coords: true
 
 # Path to trained ProtSCAPE model (EDIT THIS for your model)
 # Format: "train_logs/{run_dir}/model_FINAL_{protein}.pt"
-model_path: "train_logs/progsnn_logs_run_atlas_2026-02-11-130333/model_FINAL_7jfl_noatomAA.pt"
+model_path: "train_logs/progsnn_logs_run_atlas_2026-02-18-184924/model_FINAL_6p5h_GCN.pt"
 
 # Path to graph dataset directory
 dataset_path: "data/graphs/"
 
 # Reference PDB structure
 # Format: "data/datasets/{protein}_A_protein/{protein}_A.pdb"
-pdb: "data/datasets/7jfl_C_protein/7jfl_C.pdb"
+pdb: "data/datasets/6p5h_A_protein/6p5h_A.pdb"
 
 # Number of PDB structures to export
 n_pdb_samples: 100
@@ -93,26 +93,26 @@ xyz_mu_path: null
 xyz_sd_path: null
 
 # ====================================
-# ABLATION: Multiple simultaneous ablations
+# ABLATION: Use GCN instead of Scattering
 # ====================================
+feature_extractor: "gcn"  # Options: "scattering" (default), "gcn", "simple_gcn"
+gcn_num_layers: 4         # Number of GCN layers (matches scattering depth)
+gcn_hidden_channels: null # null = same as input_dim
 
-# 1. feature extractor: use scattering transform
-feature_extractor: "scattering"
-
-# 2. Use only residue index and xyz (ablate atomic number and amino acid)
+# Node features - keep all enabled for fair comparison
 ablate_node_features:
-  use_atomic_number: false   # <--- ABLATED
+  use_atomic_number: true
   use_residue_index: true
-  use_amino_acid: false      # <--- ABLATED
+  use_amino_acid: true
   use_xyz: true
   randomize_atomic_number: false
   randomize_residue_index: false
   randomize_amino_acid: false
   randomize_xyz: false
 
-# 3. Remove edge features
+# Edge features - keep enabled
 ablate_edge_features:
-  use_edge_features: true   # <--- ABLATED
+  use_edge_features: true
   randomize_edge_features: false
   zero_edge_features: false
 
