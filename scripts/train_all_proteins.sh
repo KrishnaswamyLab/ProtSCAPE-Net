@@ -1,9 +1,9 @@
 #!/bin/bash
 
-#SBATCH --job-name=atlas_6in7
+#SBATCH --job-name=protscape_train_all
 #SBATCH --time=20:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --partition=scavenge_gpu
+#SBATCH --partition=gpu_rtx6000
 #SBATCH --gpus=1
 #SBATCH --mem=512G
 #SBATCH --output=./logs/slurm/%x_%j.out
@@ -19,4 +19,4 @@ export WANDB_DISABLED=true
 export WANDB_MODE=disabled
 
 # Run training on all proteins in parallel
-uv run "$REPO_ROOT/train.py" --config "$REPO_ROOT/configs/config.yaml" --protein 6in7
+uv run "$REPO_ROOT/train_all_proteins.py" --config "$REPO_ROOT/configs/config.yaml" --graphs_dir "$REPO_ROOT/data/graphs"

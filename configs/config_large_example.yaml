@@ -20,6 +20,7 @@ n_epochs: 1200           # more epochs to train larger model
 alpha: 20.0
 beta_loss: 0.5
 coord_weight: 70.0
+use_energy_regularization: true
 
 # Transformer/Scatter
 probs: 0.3               # higher dropout for regularization

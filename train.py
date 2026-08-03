@@ -25,7 +25,6 @@ import warnings
 import numpy as np
 import torch
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import WandbLogger
 from torch_geometric.loader import DataLoader
 from protscape.protscape import ProtSCAPE
 from utils.normalize import normalize_energy, normalize_xyz_only
@@ -34,6 +33,63 @@ from utils.config import load_config, config_to_hparams, save_config
 
 # Suppress all warnings
 warnings.filterwarnings("ignore")
+
+
+def emit_runtime_notice(message: str) -> None:
+    print(f"[runtime] {message}")
+
+
+def probe_cuda_runtime() -> tuple[bool, str | None]:
+    try:
+        if not torch.cuda.is_available():
+            return False, None
+
+        if torch.cuda.device_count() < 1:
+            return False, "torch.cuda reported no visible devices"
+
+        torch.cuda.get_device_properties(0)
+        return True, None
+    except Exception as exc:
+        return False, str(exc)
+
+
+def resolve_trainer_devices(args: object) -> dict[str, object]:
+    requested_accelerator = str(getattr(args, "accelerator", "auto")).lower()
+    requested_devices = getattr(args, "devices", "auto")
+
+    if requested_accelerator == "cpu":
+        return {"accelerator": "cpu", "devices": 1}
+
+    cuda_requested = requested_accelerator in {"auto", "cuda", "gpu"}
+    cuda_available = False
+    cuda_probe_error = None
+
+    if cuda_requested:
+        cuda_available, cuda_probe_error = probe_cuda_runtime()
+        if cuda_probe_error is not None:
+            emit_runtime_notice(
+                f"CUDA probe failed ({cuda_probe_error}). Falling back to CPU for this run."
+            )
+
+    if cuda_available:
+        return {"accelerator": "gpu", "devices": requested_devices}
+
+    if requested_accelerator in {"cuda", "gpu"}:
+        emit_runtime_notice("CUDA was explicitly requested but is not usable. Falling back to CPU.")
+
+    return {"accelerator": "cpu", "devices": 1}
+
+
+def resolve_trainer_precision(args: object, trainer_device_cfg: dict[str, object]) -> str:
+    requested_precision = str(getattr(args, "precision", "32-true"))
+
+    if trainer_device_cfg["accelerator"] == "cpu" and requested_precision != "32-true":
+        emit_runtime_notice(
+            f"Precision '{requested_precision}' is not being used on CPU; switching to '32-true'."
+        )
+        return "32-true"
+
+    return requested_precision
 
 
 # -------------------------
@@ -144,19 +200,27 @@ if __name__ == "__main__":
 
     print(f"Total number of graphs={len(full_dataset)}")
 
+    pin_memory = bool(getattr(args, "pin_memory", False))
+    persistent_workers = bool(getattr(args, "persistent_workers", False)) and int(args.num_workers) > 0
+    prefetch_factor = int(getattr(args, "prefetch_factor", 2))
+    loader_kwargs = {
+        "batch_size": args.batch_size,
+        "num_workers": args.num_workers,
+        "pin_memory": pin_memory,
+    }
+    if int(args.num_workers) > 0:
+        loader_kwargs["persistent_workers"] = persistent_workers
+        loader_kwargs["prefetch_factor"] = max(1, prefetch_factor)
+
     train_loader = DataLoader(
-        full_dataset,
-        batch_size=args.batch_size,
+        train_set,
         shuffle=True,
-        num_workers=args.num_workers,
-        pin_memory=True,
+        **loader_kwargs,
     )
     valid_loader = DataLoader(
         val_set,
-        batch_size=args.batch_size,
         shuffle=False,
-        num_workers=args.num_workers,
-        pin_memory=True,
+        **loader_kwargs,
     )
 
     args.len_epoch = len(train_loader)
@@ -173,24 +237,44 @@ if __name__ == "__main__":
     save_config(config, os.path.join(save_dir, "config_used.yaml"))
 
     run_name = f"{args.dataset}_{args.protein}_ATOMIC_onehotXYZ_SE3_procrustes"
-    wandb_logger = WandbLogger(
-        name=run_name,
-        project=args.wandb_project,
-        log_model=True,
-        save_dir=save_dir,
-    )
-    wandb_logger.log_hyperparams(vars(args))
-    wandb_logger.experiment.log({"logging_timestamp": date_suffix})
+    disable_wandb_env = os.getenv("WANDB_DISABLED", "").lower() in {"1", "true", "yes", "on"}
+    use_wandb = bool(getattr(args, "use_wandb", True)) and not disable_wandb_env
+    trainer_logger = False
+
+    if use_wandb:
+        from pytorch_lightning.loggers import WandbLogger
+
+        trainer_logger = WandbLogger(
+            name=run_name,
+            project=args.wandb_project,
+            log_model=True,
+            save_dir=save_dir,
+        )
+        trainer_logger.log_hyperparams(vars(args))
+        trainer_logger.experiment.log({"logging_timestamp": date_suffix})
+    else:
+        print("[log] wandb disabled (use_wandb=false or WANDB_DISABLED set)")
 
     # -------------------------
     # Train
     # -------------------------
     model = ProtSCAPE(args)
+    trainer_device_cfg = resolve_trainer_devices(args)
+    trainer_precision = resolve_trainer_precision(args, trainer_device_cfg)
+    trainer_accumulate = int(getattr(args, "accumulate_grad_batches", 1))
+
+    print(
+        f"[trainer] accelerator={trainer_device_cfg['accelerator']}, "
+        f"devices={trainer_device_cfg['devices']}, precision={trainer_precision}"
+    )
 
     trainer = pl.Trainer(
         max_epochs=args.n_epochs,
-        devices="auto",
-        logger=wandb_logger,
+        accelerator=trainer_device_cfg["accelerator"],
+        devices=trainer_device_cfg["devices"],
+        logger=trainer_logger,
+        precision=trainer_precision,
+        accumulate_grad_batches=max(1, trainer_accumulate),
         # log_every_n_steps=10,
         # enable_checkpointing=True,
     )

@@ -2,16 +2,16 @@
 # Default config for atomic-level graph inference/testing
 
 # Dataset/Model
-protein: "6h86"
-graphs_pkl: "data/graphs/6h86_A_graphs.pkl"
-ckpt_path: "train_logs/progsnn_logs_run_deshaw_2026-01-27-140711/model_FINAL_6h86.pt"  # Required - override this!
+protein: "5znj_A"  # Required - override this!
+graphs_pkl: "data/graphs/5znj_A_graphs.pkl"
+ckpt_path: "train_logs/progsnn_logs_run_atlas_2026-04-07-223108/model_FINAL_5znj_A.pt"  # Required - override this!
 
 # MDAnalysis export (must match how graphs were built)
-pdb: "data/datasets/6h86_A_protein/6h86_A.pdb"
-xtc: "data/datasets/6h86_A_protein/6h86_A_prod_R1_fit.xtc"
+pdb: "/nfs/roberts/pi/pi_sk2433/shared/ProtSCAPE_2026_MDSimulations/ATLAS_1K/5znj_A/5znj_A.pdb"
+xtc: "/nfs/roberts/pi/pi_sk2433/shared/ProtSCAPE_2026_MDSimulations/ATLAS_1K/5znj_A/5znj_A_prod_R1_fit.xtc"
 # DataLoader
-batch_size: 1
-num_workers: 2
+batch_size: 1  # Keep 1 when export_pdb=true
+num_workers: 4
 
 # Model hparams (must match training)
 latent_dim: 128
@@ -19,9 +19,9 @@ hidden_dim: 256
 embedding_dim: 128
 input_dim: 3
 lr: 1e-3
-alpha: 50.0
+alpha: 20.0
 beta_loss: 0.5
-coord_weight: 50.0
+coord_weight: 70.0
 probs: 0.2
 nhead: 1
 layers: 3

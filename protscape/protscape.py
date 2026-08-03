@@ -13,7 +13,6 @@ import argparse
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from torch_geometric.utils import to_dense_batch
 from torch.nn.utils import spectral_norm
 
 from egnn_pytorch import EGNN  # pip install egnn-pytorch
@@ -28,31 +27,40 @@ from protscape.wavelets import Scatter_layer
 # Kabsch alignment + loss
 # -------------------------
 def kabsch_align(pred_xyz, true_xyz, mask, eps: float = 1e-8, allow_reflection: bool = False):
-    mask_f = mask.to(pred_xyz.dtype).unsqueeze(-1)  # (B,N,1)
-    n_valid = mask_f.sum(dim=1, keepdim=True).clamp_min(1.0)  # (B,1,1)
+    # Batched CUDA SVD is not implemented for fp16, so force fp32 and disable autocast here.
+    orig_dtype = pred_xyz.dtype
+    device_type = pred_xyz.device.type
 
-    pred_centroid = (pred_xyz * mask_f).sum(dim=1, keepdim=True) / n_valid
-    true_centroid = (true_xyz * mask_f).sum(dim=1, keepdim=True) / n_valid
+    with torch.autocast(device_type=device_type, enabled=False):
+        pred_xyz32 = pred_xyz.float()
+        true_xyz32 = true_xyz.float()
 
-    P = (pred_xyz - pred_centroid) * mask_f
-    Q = (true_xyz - true_centroid) * mask_f
+        mask_f = mask.to(pred_xyz32.dtype).unsqueeze(-1)  # (B,N,1)
+        n_valid = mask_f.sum(dim=1, keepdim=True).clamp_min(1.0)  # (B,1,1)
 
-    H = P.transpose(1, 2) @ Q
-    U, S, Vh = torch.linalg.svd(H)
-    V = Vh.transpose(-2, -1)
+        pred_centroid = (pred_xyz32 * mask_f).sum(dim=1, keepdim=True) / n_valid
+        true_centroid = (true_xyz32 * mask_f).sum(dim=1, keepdim=True) / n_valid
 
-    R = V @ U.transpose(-2, -1)
+        P = (pred_xyz32 - pred_centroid) * mask_f
+        Q = (true_xyz32 - true_centroid) * mask_f
 
-    if not allow_reflection:
-        detR = torch.det(R)
-        neg = detR < 0
-        if neg.any():
-            V_fix = V.clone()
-            V_fix[neg, :, 2] *= -1.0
-            R = V_fix @ U.transpose(-2, -1)
+        H = P.transpose(1, 2) @ Q
+        U, S, Vh = torch.linalg.svd(H)
+        V = Vh.transpose(-2, -1)
 
-    pred_aligned = (pred_xyz - pred_centroid) @ R + true_centroid
-    return pred_aligned
+        R = V @ U.transpose(-2, -1)
+
+        if not allow_reflection:
+            detR = torch.det(R)
+            neg = detR < 0
+            if neg.any():
+                V_fix = V.clone()
+                V_fix[neg, :, 2] *= -1.0
+                R = V_fix @ U.transpose(-2, -1)
+
+        pred_aligned = (pred_xyz32 - pred_centroid) @ R + true_centroid
+
+    return pred_aligned.to(orig_dtype)
 
 
 def kabsch_mse_loss(pred_xyz, true_xyz, mask, allow_reflection: bool = False):
@@ -116,6 +124,7 @@ class ProtSCAPE(TGTransformerBaseModel_ATLAS):
         self.coord_weight = getattr(hparams, "coord_weight", 1.0)
         self.allow_reflection = getattr(hparams, "allow_reflection", False)
         self.batch_size = getattr(hparams, "batch_size", 1)
+        self.return_attention_maps = bool(getattr(hparams, "return_attention_maps", False))
 
         self.num_nodes = getattr(hparams, "num_nodes", None)
         if self.num_nodes is None:
@@ -209,7 +218,7 @@ class ProtSCAPE(TGTransformerBaseModel_ATLAS):
     def row_transformer_encoding(self, embedded_batch):
         pos_encoded = self.pos_encoder(embedded_batch)
         out = self.row_encoder(pos_encoded)
-        att = self.row_encoder.get_attention_maps(pos_encoded)
+        att = self.row_encoder.get_attention_maps(pos_encoded) if self.return_attention_maps else None
         return out, att
 
     # ---- decoders ----
@@ -230,7 +239,6 @@ class ProtSCAPE(TGTransformerBaseModel_ATLAS):
         return h.view(-1, self.num_nodes, 3)
 
     def encode(self, batch):
-        x_gt_dense, node_mask = to_dense_batch(batch.x, batch.batch, max_num_nodes=self.num_nodes)
         x_in = batch.x.float()
 
         B = batch.num_graphs
@@ -239,6 +247,10 @@ class ProtSCAPE(TGTransformerBaseModel_ATLAS):
         # fixed-size sanity
         if x_in.size(0) != B * N:
             raise RuntimeError(f"Expected fixed-size graphs: got {x_in.size(0)} nodes, expected B*N={B*N}")
+
+        # Graphs are fixed-size; avoid to_dense_batch allocation each step.
+        x_gt_dense = x_in.view(B, N, self.node_feat_dim)
+        node_mask = torch.ones((B, N), dtype=torch.bool, device=x_in.device)
 
         # scalar features (Z,res,aa) as floats -> embed
         scalar_feat = x_in[:, :3]                 # (B*N,3)
@@ -282,9 +294,7 @@ class ProtSCAPE(TGTransformerBaseModel_ATLAS):
             coeffs = coeffs.unsqueeze(0)
 
         batch.x = x_orig
-
         row_out, att_maps = self.row_transformer_encoding(coeffs)
-
         z_rep = row_out.sum(1)
         if z_rep.ndim == 1:
             z_rep = z_rep.unsqueeze(0)

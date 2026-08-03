@@ -2,9 +2,9 @@
 # Default config for atomic-level graph training
 
 # Dataset
-dataset: "deshaw"
-protein: "BPTI"
-pkl_path: "data/graphs/BPTI_graphs.pkl"
+dataset: "atlas"
+protein: "6h86"
+pkl_path: "data/graphs/6h86_A_graphs.pkl"
 
 # Model hyperparameters
 latent_dim: 128
@@ -20,6 +20,7 @@ n_epochs: 800
 alpha: 20.0                # energy loss weight
 beta_loss: 0.5             # node reconstruction weight
 coord_weight: 70.0         # coordinate loss weight
+use_energy_regularization: false  # set false to disable energy-organized latent regularization
 
 # Transformer/Scatter
 probs: 0.2
@@ -32,12 +33,21 @@ num_mp_layers: 2
 mp_hidden: 256
 
 # Data loading
-batch_size: 64
-num_workers: 15
+batch_size: 8
+num_workers: 4
+pin_memory: false
+persistent_workers: false
+prefetch_factor: 1
 
 # Logging/Saving
 save_dir: "train_logs/"
 wandb_project: "protscape"
+use_wandb: false
+return_attention_maps: true
+precision: "16-mixed"
+accumulate_grad_batches: 1
+# accelerator: "auto"
+# devices: "auto"
 
 # Split parameters
 split_seed: 0

@@ -311,7 +311,8 @@ def find_trajectory_files(pdb_chain: str, datasets_dir: str = "datasets") -> tup
     Raises:
         FileNotFoundError: If files are not found
     """
-    folder_name = f"{pdb_chain}_protein"
+    # folder_name = f"{pdb_chain}_protein"
+    folder_name = f"{pdb_chain}"
     folder_path = Path(datasets_dir) / folder_name
     
     if not folder_path.exists():
@@ -352,7 +353,7 @@ Examples:
     parser.add_argument('--selection', default="protein and backbone", help='MDTraj atom selection (default: "protein and backbone")')
     parser.add_argument('--property', default="rog", choices=["rog", "sasa", "none"], help='Node property to compute (default: rog)')
     parser.add_argument('--output', '-o', default=None, help='Output pickle file (default: {PDB_CHAIN}_graphs.pkl)')
-    parser.add_argument('--datasets_dir', default="datasets", help='Datasets base directory (default: datasets)')
+    parser.add_argument('--datasets_dir', default="/nfs/roberts/pi/pi_sk2433/shared/ProtSCAPE_2026_MDSimulations/ATLAS_1k", help='Datasets base directory (default: datasets)')
     
     args = parser.parse_args()
     

@@ -67,7 +67,12 @@ class Autoencoder(nn.Module):
     
     def load(self, path):
         """Load model checkpoint."""
-        checkpoint = torch.load(path)
+        map_location = next(self.parameters()).device
+        try:
+            checkpoint = torch.load(path, map_location=map_location, weights_only=False)
+        except TypeError:
+            # Backward compatibility with older PyTorch versions.
+            checkpoint = torch.load(path, map_location=map_location)
         self.load_state_dict(checkpoint['model_state_dict'])
         print(f"Autoencoder loaded from {path}")
         return self

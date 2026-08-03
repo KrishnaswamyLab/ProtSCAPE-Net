@@ -59,6 +59,9 @@ class TGTransformerBaseModel_ATLAS(LightningModule):
 
         self.alpha = getattr(hparams, "alpha", 1.0)       # weight on Laplacian smoothness
         self.beta_loss = getattr(hparams, "beta_loss", 1.0)
+        self.use_energy_regularization = bool(
+            getattr(hparams, "use_energy_regularization", True)
+        )
 
         # Laplacian graph hyperparams
         self.lap_sigma_mode = getattr(hparams, "lap_sigma_mode", "median")
@@ -75,7 +78,7 @@ class TGTransformerBaseModel_ATLAS(LightningModule):
         B) New ablation: (z_rep, x_recon, x_gt, node_mask)                    len=4
         C) Older w/ energy head: (preds, z_rep, coeffs, att_maps, x_recon, x_gt, node_mask) len=7
         """
-        e = batch.energy
+        e = getattr(batch, "energy", None)
         out = self(batch)
 
         if isinstance(out, (tuple, list)):
@@ -101,7 +104,6 @@ class TGTransformerBaseModel_ATLAS(LightningModule):
         return {label + str(key): val for key, val in loss_dict.items()}
 
     def training_step(self, batch, batch_idx):
-        torch.set_grad_enabled(True)
         z_rep, energies, x_recon, x_gt, node_mask = self.shared_step(batch)
 
         train_loss, train_logs = self.multi_loss(
@@ -116,16 +118,16 @@ class TGTransformerBaseModel_ATLAS(LightningModule):
         return train_loss
 
     def validation_step(self, batch, batch_idx):
-        torch.set_grad_enabled(True)
-        z_rep,  energies, x_recon, x_gt, node_mask = self.shared_step(batch)
+        with torch.no_grad():
+            z_rep,  energies, x_recon, x_gt, node_mask = self.shared_step(batch)
 
-        val_loss, val_logs = self.multi_loss(
-            z_rep=z_rep,
-            energies=energies,
-            aa_recon=x_recon,
-            aa_gt=x_gt,
-            node_mask=node_mask,
-        )
+            val_loss, val_logs = self.multi_loss(
+                z_rep=z_rep,
+                energies=energies,
+                aa_recon=x_recon,
+                aa_gt=x_gt,
+                node_mask=node_mask,
+            )
         val_logs = self.relabel(val_logs, "val_")
         self.log_dict(val_logs, on_step=False, on_epoch=True, batch_size=self.batch_size)
         return val_loss
@@ -143,20 +145,28 @@ class TGTransformerBaseModel_ATLAS(LightningModule):
         aa_gt = kwargs["aa_gt"]
         node_mask = kwargs.get("node_mask", None)
 
-        # Laplacian smoothness replaces energy-prediction loss
-        device = z_rep.device
-        e = torch.as_tensor(energies, dtype=torch.float32, device=device).view(-1)
-        # lap_loss = lap_smooth_soft(Z=z_rep, e=e, sigma2=1.0)
-        lap_loss = energy_laplacian_smoothness(z_rep, e, sigma2=6.0, detach_kernel=False)
-         # AA reconstruction loss
+        # Optional energy regularization ablation.
+        if self.use_energy_regularization:
+            if energies is None:
+                raise ValueError(
+                    "Batch is missing energy values, but use_energy_regularization=true."
+                )
+            device = z_rep.device
+            e = torch.as_tensor(energies, dtype=torch.float32, device=device).view(-1)
+            lap_loss = energy_laplacian_smoothness(z_rep, e, sigma2=6.0, detach_kernel=False)
+            effective_alpha = getattr(self, "alpha", 1.0)
+        else:
+            lap_loss = torch.zeros((), device=z_rep.device, dtype=z_rep.dtype)
+            effective_alpha = 0.0
+
+        # AA reconstruction loss
         node_total, type_ce, coord_loss = self.recon_aa_loss(
             predictions=aa_recon, targets=aa_gt, mask=node_mask
         )
 
-        alpha = getattr(self, "alpha", 1.0)
         beta = getattr(self, "beta_loss", 1.0)
 
-        total_loss = alpha * lap_loss + beta * node_total
+        total_loss = effective_alpha * lap_loss + beta * node_total
 
         log_losses = {
             "total_loss": total_loss.detach(),
@@ -164,6 +174,7 @@ class TGTransformerBaseModel_ATLAS(LightningModule):
             "node_loss": (node_total).detach(),
             "type_ce_loss": (type_ce).detach(),
             "coord_loss": (coord_loss).detach(),
+            "energy_reg_enabled": float(self.use_energy_regularization),
         }
         return total_loss, log_losses
 

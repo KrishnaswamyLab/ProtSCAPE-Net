@@ -11,7 +11,7 @@ Or directly in ensemble_gen.py by modifying the Config initialization.
 
 from protscape.config import Config
 
-def get_ensemble_config(protein_id="6p5h"):
+def get_ensemble_config(protein_id="6e7e"):
     """
     Get configuration for ensemble generation with PDB export.
     
@@ -23,16 +23,16 @@ def get_ensemble_config(protein_id="6p5h"):
     """
     config = Config(
         # Data paths
-        original_data_path="Inference/6p5h/latents_zrep_10k.npy",
+        original_data_path="Inference/6e7e_A/latents_zrep.npy",
         checkpoint_dir=f"checkpoints/{protein_id}",
         output_dir=f"Generation/Ensemble/{protein_id}",
         
         # Decoding and PDB export
         decode_to_coords=True,
         protein=protein_id,
-        model_path=f"train_logs/progsnn_logs_run_deshaw_2026-01-27-140858/model_FINAL_6p5h.pt",
+        model_path=f"train_logs/progsnn_logs_run_atlas_2026-04-08-052252/model_FINAL_6e7e_A.pt",
         dataset_path="data/graphs/",
-        pdb="data/datasets/6p5h_A_protein/6p5h_A.pdb",  # Auto-detect from dataset
+        pdb="/nfs/roberts/pi/pi_sk2433/shared/ProtSCAPE_2026_MDSimulations/ATLAS_1K/6e7e_A/6e7e_A.pdb",  # Auto-detect from dataset
         n_pdb_samples=100,
         
         # XYZ normalization (if needed)

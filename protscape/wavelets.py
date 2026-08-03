@@ -3,11 +3,16 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn import Linear
-from torch_scatter import scatter_add
 from torch_geometric.nn import MessagePassing
 from torch_geometric.utils import add_remaining_self_loops
 from torch_geometric.utils.num_nodes import maybe_num_nodes
 from torch_geometric.utils import to_dense_batch
+
+
+def scatter_add_1d(src, index, dim_size):
+    out = torch.zeros(dim_size, dtype=src.dtype, device=src.device)
+    out.index_add_(0, index, src)
+    return out
 
 
 def gcn_norm(edge_index, edge_weight=None, num_nodes=None, add_self_loops=False, dtype=None):
@@ -27,7 +32,7 @@ def gcn_norm(edge_index, edge_weight=None, num_nodes=None, add_self_loops=False,
         edge_weight = tmp_edge_weight
 
     row, col = edge_index[0], edge_index[1]
-    deg = scatter_add(edge_weight, col, dim=0, dim_size=num_nodes)
+    deg = scatter_add_1d(edge_weight, col, dim_size=num_nodes)
     deg_inv = deg.pow(-1)
     deg_inv.masked_fill_(deg_inv == float("inf"), 0)
 

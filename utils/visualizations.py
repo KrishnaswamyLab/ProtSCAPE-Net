@@ -85,12 +85,33 @@ def replace_energy_with_linear_ramp(dataset, normalize=True):
 
 def plot_embedding(embed_2d: np.ndarray, color: np.ndarray, out_path: str, title: str):
     import matplotlib.pyplot as plt
+    from matplotlib import colors as mcolors
 
     embed_2d = np.asarray(embed_2d)
     color = np.asarray(color).reshape(-1)
 
+    # Robust scaling improves contrast when a few outliers dominate color range.
+    finite = np.isfinite(color)
+    if finite.any():
+        lo, hi = np.percentile(color[finite], [2, 98])
+        if np.isfinite(lo) and np.isfinite(hi) and hi > lo:
+            norm = mcolors.Normalize(vmin=lo, vmax=hi, clip=True)
+        else:
+            norm = None
+    else:
+        norm = None
+
     plt.figure()
-    sc = plt.scatter(embed_2d[:, 0], embed_2d[:, 1], c=color, s = 8, alpha = 0.25)
+    sc = plt.scatter(
+        embed_2d[:, 0],
+        embed_2d[:, 1],
+        c=color,
+        cmap="viridis",
+        norm=norm,
+        s=14,
+        alpha=0.78,
+        edgecolors="none",
+    )
     plt.colorbar(sc, label="Energy")
     plt.title(title)
     plt.xlabel("dim 1")

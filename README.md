@@ -48,7 +48,7 @@ ProtSCAPE-Net combines multiple state-of-the-art techniques to learn and generat
 
 - Python 3.8 or higher
 - CUDA-capable GPU (recommended)
-- Conda or virtualenv (recommended)
+- [uv](https://docs.astral.sh/uv/) (recommended)
 
 ### Setup
 
@@ -57,22 +57,27 @@ ProtSCAPE-Net combines multiple state-of-the-art techniques to learn and generat
 git clone https://github.com/yourusername/ProtSCAPE-Net.git
 cd ProtSCAPE-Net
 
-# Create a conda environment
-conda create -n protscape python=3.8
-conda activate protscape
+# Install uv (Linux/macOS)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create and activate a virtual environment
+uv venv
+source .venv/bin/activate
 
 # Install dependencies
-pip install -r requirements.txt
+uv sync
 
-# Install PyTorch Geometric (adjust CUDA version as needed)
-pip install torch-geometric torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-1.13.0+cu117.html
+# On clusters with CUDA 12.8 drivers, replace the default CUDA 13.0 wheel.
+uv pip install --python .venv/bin/python --index-url https://download.pytorch.org/whl/cu128 torch==2.10.0
 ```
+
+If `torch.cuda.is_available()` warns that the NVIDIA driver is too old, the environment usually has a newer CUDA wheel than the node driver supports. This repo has been tested on cluster nodes with CUDA 12.8 drivers, so install the matching `cu128` PyTorch build before training on GPU.
 
 ### Optional Dependencies
 
 For advanced visualization:
 ```bash
-pip install phate>=0.2.5
+uv pip install "phate>=0.2.5"
 ```
 
 For MolProbity metrics:

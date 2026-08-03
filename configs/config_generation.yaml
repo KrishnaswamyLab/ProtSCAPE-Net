@@ -7,7 +7,7 @@ atlas_rt_path: "data/prepare_atlas.py"
 pdb: "data/datasets/7lp1_A_protein/7lp1_A.pdb"
 
 # Model paths
-latent_path: "Inference/7lp1/latents_zrep_10k.npy"  # REQUIRED: Path to latent embeddings
+latent_path: "Inference/6e7e_A/latents_zrep.npy"  # REQUIRED: Path to latent embeddings
 model_path: "train_logs/progsnn_logs_run_atlas_2026-01-26-120329/model_FINAL_7lp1.pt"   # REQUIRED: Path to trained model checkpoint
 
 # Generation parameters

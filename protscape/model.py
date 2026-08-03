@@ -309,6 +309,10 @@ class DDPM:
     
     def load(self, path):
         """Load model checkpoint."""
-        checkpoint = torch.load(path, map_location=self.device)
+        try:
+            checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+        except TypeError:
+            # Backward compatibility with older PyTorch versions.
+            checkpoint = torch.load(path, map_location=self.device)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         print(f"Checkpoint loaded from {path}")

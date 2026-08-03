@@ -9,9 +9,10 @@
 #SBATCH --output=./logs/slurm/%x_%j.out
 #SBATCH --error=./logs/slurm/%x_%j.err
 
-cd /gpfs/gibbs/pi/krishnaswamy_smita/sv496/ProtSCAPE-Net
+REPO_ROOT="${SLURM_SUBMIT_DIR:-$PWD}"
+cd "$REPO_ROOT"
 module load miniconda
 conda activate mfcn
 
 # Run training on all proteins in parallel
-python train.py --config configs/config_ubiquitin.yaml --protein 6p5h
+python "$REPO_ROOT/train.py" --config "$REPO_ROOT/configs/config_ubiquitin.yaml" --protein 6p5h

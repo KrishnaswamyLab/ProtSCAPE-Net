@@ -30,9 +30,36 @@ from utils.generation_helpers import pick_default_pdb
 from utils.geometry import kabsch_align_np
 from utils.generation_viz import compute_structure_metrics
 import MDAnalysis as mda
+from MDAnalysis.coordinates.XTC import XTCWriter
 import pandas as pd
 
 NM_TO_ANG = 10.0
+
+
+def pdbs_to_xtc(pdb_paths, out_pdb, out_xtc, atom_selection="all"):
+    """Convert a sequence of PDB frames into topology PDB + XTC trajectory."""
+    pdb_paths = [Path(p) for p in pdb_paths]
+    out_pdb = Path(out_pdb)
+    out_xtc = Path(out_xtc)
+
+    if not pdb_paths:
+        raise ValueError("No PDB files were provided for XTC conversion.")
+
+    u0 = mda.Universe(str(pdb_paths[0]))
+    ag0 = u0.select_atoms(atom_selection)
+    ag0.write(str(out_pdb))
+
+    with XTCWriter(str(out_xtc), n_atoms=ag0.n_atoms) as writer:
+        for pdb in pdb_paths:
+            u = mda.Universe(str(pdb))
+            ag = u.select_atoms(atom_selection)
+
+            if ag.n_atoms != ag0.n_atoms:
+                raise ValueError(
+                    f"Atom count mismatch for {pdb}: expected {ag0.n_atoms}, got {ag.n_atoms}."
+                )
+
+            writer.write(ag)
 
 
 def compute_structure_metrics_all_frames(pdb_dir: str):
@@ -372,6 +399,7 @@ def decode_and_export_pdbs(config):
     print(f"[export] Exporting ALL {xyz_nm.shape[0]} PDB files to {pdb_output_dir}")
     
     # Export all frames
+    pdb_paths = []
     for i in range(xyz_nm.shape[0]):
         # Convert nm to Å
         xyz_pred_A = (xyz_nm[i] * NM_TO_ANG).astype(np.float64)
@@ -385,9 +413,23 @@ def decode_and_export_pdbs(config):
         
         # Write PDB with aligned coordinates
         ag.positions = xyz_pred_aligned_A.astype(np.float32)
-        ag.write(str(pdb_output_dir / f"pred_frame_{i:05d}.pdb"))
+        frame_path = pdb_output_dir / f"pred_frame_{i:05d}.pdb"
+        ag.write(str(frame_path))
+        pdb_paths.append(frame_path)
     
     print(f"[saved] PDB files exported to: {pdb_output_dir}")
+
+    # Convert exported PDB frames to a trajectory for downstream metric scripts.
+    xtc_topology_path = Path(config.output_dir) / "generated_topology.pdb"
+    xtc_path = Path(config.output_dir) / "generated_trajectory.xtc"
+    pdbs_to_xtc(
+        pdb_paths,
+        out_pdb=xtc_topology_path,
+        out_xtc=xtc_path,
+        atom_selection="all",
+    )
+    print(f"[saved] XTC topology written to: {xtc_topology_path}")
+    print(f"[saved] XTC trajectory written to: {xtc_path}")
     
     # Compute MolProbity scores for all frames
     print(f"\n[molprobity] Computing structure quality metrics for all {xyz_nm.shape[0]} frames...")
